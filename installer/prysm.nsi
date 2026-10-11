@@ -17,9 +17,9 @@ Unicode true
 !endif
 
 ; Fail the build (never ship an empty installer) if the payload is missing.
-!if /FileExists "${VST3_DIR}/Contents/x86_64-win/PRYSM.vst3"
+!if /FileExists "${VST3_DIR}\Contents\x86_64-win\PRYSM.vst3"
 !else
-  !error "Missing ${VST3_DIR}/Contents/x86_64-win/PRYSM.vst3 - build the plugin first."
+  !error "Missing ${VST3_DIR}\Contents\x86_64-win\PRYSM.vst3 - build the plugin first."
 !endif
 
 !define APP_NAME      "PRYSM"
@@ -120,7 +120,7 @@ Section "PRYSM VST3" SecMain
   ; 2) Copy the bundle
   ClearErrors
   SetOutPath "${VST3_TARGET}"
-  File /r "${VST3_DIR}/*.*"
+  File /r "${VST3_DIR}\*.*"
   ${If} ${Errors}
     StrCpy $0 "${VST3_TARGET}"
     MessageBox MB_OK|MB_ICONSTOP "$(MSG_COPY_FAIL)"
