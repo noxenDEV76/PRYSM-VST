@@ -1,0 +1,7 @@
+build*/
+dist/
+third_party/JUCE/
+*.user
+.vs/
+.idea/
+.vscode/
