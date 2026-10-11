@@ -12,10 +12,13 @@ CTest : 3/3 réussis (dernier passage : engine_and_processor 1,9 s ; make_test_s
 4. **Installateur NSIS sous Wine** avec une **charge factice** (pas le vrai plugin) : installation, entrées de registre, désinstallation propre.
 5. **Workflow YAML** : syntaxe validée (non exécuté sur GitHub).
 
+## Exécutés sur GitHub Actions (windows-2022, MSVC, Release x64)
+
+Run vert : compilation, `ctest` (moteur/processeur/éditeur + test hôte VST3 sur le vrai binaire Windows), génération de l'EXE, installation silencieuse, test hôte sur le plugin **installé**, désinstallation silencieuse (dossier et clé de registre supprimés). Les logs détaillés ne m'étaient pas accessibles : le résultat est le statut « success » des jobs.
+
 ## NON réalisé — à ne pas considérer comme vérifié
 
-- Compilation MSVC / Windows 64 bits (impossible ici : JUCE rejette MinGW). Le workflow est écrit mais **jamais exécuté**.
-- VST3 Windows réel et **EXE d'installation réel** (donc non testé : installation sur Windows, élévation admin, SmartScreen, fichier verrouillé, utilisateur non-admin).
+- Installation manuelle sur un vrai poste Windows (élévation admin interactive, SmartScreen, fichier verrouillé, utilisateur non-admin).
 - **FL Studio** : aucun test (logiciel indisponible), y compris l'effet des ~2080 paramètres MIDI CC cachés.
 - Écoute subjective / qualité sonore sur casque, et mesures de CPU en conditions réelles.
 - Build LTO Release final (le build dev utilise `PRYSM_ENABLE_LTO=OFF`).

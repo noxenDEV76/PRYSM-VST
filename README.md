@@ -8,13 +8,14 @@ Interface entièrement en anglais, documentation en français. Licence : AGPL-3.
 
 | Élément | État |
 |---|---|
-| Code source complet (moteur, UI, tests, CMake) | Fourni |
-| Compilation Linux (GCC/clang) + tests | Réalisée et réussie ici (voir `docs/TESTS.md`) |
-| **VST3 Windows 64 bits compilé** | **Non produit ici** : JUCE refuse MinGW et MSVC n'est pas disponible dans mon environnement. Il est produit par le workflow GitHub Actions `windows-2022` (MSVC) fourni. |
-| **EXE d'installation** | **Non produit ici** pour la même raison (il embarque le VST3 Windows). Script NSIS + pipeline fournis ; mécanique vérifiée sous Wine avec une charge factice uniquement. |
-| Test dans FL Studio | **Non réalisé** (FL Studio indisponible). |
+| Code source complet | Fourni |
+| Compilation Linux + tests | Réussie (voir `docs/TESTS.md`) |
+| Compilation Windows 64 bits (MSVC) + tests, via GitHub Actions | **Réussie** (run vert, voir Actions) |
+| EXE d'installation | **Produit par la CI** et publié dans la Release `v1.0.0` ; installation/désinstallation silencieuses vérifiées sur le runner Windows |
+| Test dans FL Studio | **Non réalisé** |
+| Signature de l'EXE | Non signé (avertissement SmartScreen attendu) |
 
-Pour obtenir l'EXE : pousser ce dossier dans un dépôt GitHub, lancer le workflow `build` ; l'artefact `PRYSM-1.0.0-windows-x64` contient `PRYSM-1.0.0-Windows-x64-Setup.exe` et un zip du VST3. Détails : `docs/BUILD.md`.
+Pour reconstruire l'EXE : pousser ce dossier dans un dépôt GitHub, lancer le workflow `build` ; l'artefact `PRYSM-1.0.0-windows-x64` contient `PRYSM-1.0.0-Windows-x64-Setup.exe` et un zip du VST3. Détails : `docs/BUILD.md`.
 
 ## Documentation
 
