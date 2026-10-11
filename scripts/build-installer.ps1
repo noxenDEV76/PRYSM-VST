@@ -17,8 +17,12 @@ $vst3 = (Resolve-Path $Vst3Dir).Path
 if (-not (Test-Path "$vst3\Contents\x86_64-win\PRYSM.vst3")) { throw "Missing $vst3\Contents\x86_64-win\PRYSM.vst3 - build the plug-in first." }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 $out = (Resolve-Path $OutDir).Path
-& $makensis /V2 "/DVERSION=$Version" "/DVST3_DIR=$vst3" "/DOUT_DIR=$out" installer\prysm.nsi
-if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
+$log = & $makensis /V2 "/DVERSION=$Version" "/DVST3_DIR=$vst3" "/DOUT_DIR=$out" installer\prysm.nsi 2>&1 | Out-String
+Write-Host $log
+if ($LASTEXITCODE -ne 0) {
+    if ($env:GITHUB_ACTIONS) { $one = ($log -replace "`r?`n", " | "); Write-Host "::error title=makensis failed::$one" }
+    throw "makensis failed ($LASTEXITCODE)"
+}
 $exe = Join-Path $out "PRYSM-$Version-Windows-x64-Setup.exe"
 if (-not (Test-Path $exe)) { throw "Installer was not produced: $exe" }
 Get-Item $exe | Format-List Name, Length
