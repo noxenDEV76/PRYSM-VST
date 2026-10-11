@@ -5,23 +5,24 @@
 namespace prysm::ui
 {
 // Logical design size of the editor. The whole UI is drawn at this size and scaled uniformly.
-constexpr int kDesignW = 1120;
-constexpr int kDesignH = 700;
+constexpr int kDesignW = 1000;
+constexpr int kDesignH = 660;
 
 namespace col
 {
-    const juce::Colour bg0       { 0xff040605 }; // deep black
-    const juce::Colour bg1       { 0xff0a0e0c }; // graphite panels
-    const juce::Colour bg2       { 0xff101714 }; // raised surfaces
-    const juce::Colour edge      { 0xff1b2922 };
-    const juce::Colour edgeHi    { 0xff2a3f34 };
-    const juce::Colour deepGreen { 0xff0d1f15 }; // very dark green surfaces
-    const juce::Colour midGreen  { 0xff17402a };
-    const juce::Colour acid      { 0xffb4f01c }; // acid green: active controls
-    const juce::Colour radio     { 0xff3dff7e }; // radioactive green: glow accents
-    const juce::Colour text      { 0xffe8ece4 }; // off-white
-    const juce::Colour grey      { 0xff7d8a84 }; // cold grey
-    const juce::Colour greyDim   { 0xff46514c };
+    const juce::Colour bg0       { 0xff02050c }; // deep space navy / black
+    const juce::Colour bg1       { 0xff060d1c }; // panels
+    const juce::Colour bg2       { 0xff0b1730 }; // raised surfaces
+    const juce::Colour edge      { 0xff14264a };
+    const juce::Colour edgeHi    { 0xff24427f };
+    const juce::Colour deepBlue  { 0xff081d47 }; // selected / active surfaces
+    const juce::Colour midBlue   { 0xff1246a8 };
+    const juce::Colour neon      { 0xff2fa8ff }; // main neon blue
+    const juce::Colour glow      { 0xff7fe4ff }; // bright cyan accent
+    const juce::Colour violet    { 0xff7a5cff }; // second vibe colour (smoke / gradients)
+    const juce::Colour text      { 0xffeaf3ff };
+    const juce::Colour grey      { 0xff8aa2c8 };
+    const juce::Colour greyDim   { 0xff4a6089 };
     const juce::Colour warn      { 0xffffb020 };
     const juce::Colour error     { 0xffff5148 };
 }
@@ -38,6 +39,13 @@ struct Fonts
         static juce::Typeface::Ptr t = juce::Typeface::createSystemTypefaceFor (BinaryData::ShareTechMonoRegular_ttf, BinaryData::ShareTechMonoRegular_ttfSize);
         return t;
     }
+    static juce::Typeface::Ptr display()
+    {
+        static juce::Typeface::Ptr t = juce::Typeface::createSystemTypefaceFor (BinaryData::Orbitron_ttf, BinaryData::Orbitron_ttfSize);
+        return t;
+    }
+    /** Wide futuristic display face (title). */
+    static juce::Font headline (float h, float tracking = 0.2f) { return juce::Font (juce::FontOptions (display()).withHeight (h).withKerningFactor (tracking)); }
     /** Technical sans (tracked small caps style) for labels, titles and buttons. */
     static juce::Font title (float h, float tracking = 0.12f) { return juce::Font (juce::FontOptions (label()).withHeight (h).withKerningFactor (tracking)); }
     /** Monospace for numeric readouts. */
@@ -86,7 +94,7 @@ public:
     {
         setColour (juce::PopupMenu::backgroundColourId, col::bg1);
         setColour (juce::PopupMenu::textColourId, col::text);
-        setColour (juce::PopupMenu::highlightedBackgroundColourId, col::midGreen);
+        setColour (juce::PopupMenu::highlightedBackgroundColourId, col::midBlue);
         setColour (juce::PopupMenu::highlightedTextColourId, col::text);
         setColour (juce::TooltipWindow::backgroundColourId, col::bg2);
         setColour (juce::TooltipWindow::textColourId, col::text);
@@ -138,7 +146,7 @@ public:
         const float from = bipolar ? (startA + endA) * 0.5f : startA;
         juce::Path val;
         val.addCentredArc (c.x, c.y, ra, ra, 0.0f, juce::jmin (from, ang), juce::jmax (from, ang), true);
-        const auto vc = active ? col::acid : col::greyDim;
+        const auto vc = active ? col::neon : col::greyDim;
         if (active)
         {
             g.setColour (vc.withAlpha (0.14f + 0.1f * hot));
@@ -158,17 +166,17 @@ public:
     {
         auto r = b.getLocalBounds().toFloat().reduced (1.0f);
         const bool on = b.getToggleState();
-        g.setColour (on ? col::deepGreen : col::bg2);
+        g.setColour (on ? col::deepBlue : col::bg2);
         g.fillRoundedRectangle (r, 4.0f);
-        g.setColour (on ? col::acid.withAlpha (0.9f) : (over ? col::edgeHi : col::edge));
+        g.setColour (on ? col::neon.withAlpha (0.9f) : (over ? col::edgeHi : col::edge));
         g.drawRoundedRectangle (r, 4.0f, 1.0f);
 
         auto led = juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ r.getX() + 16.0f, r.getCentreY() });
         if (on)
         {
-            g.setColour (col::acid.withAlpha (0.25f));
+            g.setColour (col::neon.withAlpha (0.25f));
             g.fillEllipse (led.expanded (4.0f));
-            g.setColour (col::acid);
+            g.setColour (col::neon);
         }
         else g.setColour (col::greyDim);
         g.fillEllipse (led);
@@ -183,17 +191,17 @@ public:
     {
         auto r = b.getLocalBounds().toFloat().reduced (0.5f);
         const bool accent = (bool) b.getProperties().getWithDefault ("accent", false);
-        auto base = accent ? col::deepGreen : col::bg2;
+        auto base = accent ? col::deepBlue : col::bg2;
         if (down) base = base.brighter (0.15f);
         g.setColour (base);
         g.fillRoundedRectangle (r, 4.0f);
-        g.setColour (accent ? col::acid.withAlpha (over ? 1.0f : 0.75f) : (over ? col::edgeHi.brighter (0.2f) : col::edgeHi));
+        g.setColour (accent ? col::neon.withAlpha (over ? 1.0f : 0.75f) : (over ? col::edgeHi.brighter (0.2f) : col::edgeHi));
         g.drawRoundedRectangle (r, 4.0f, 1.0f);
     }
     void drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool) override
     {
         const bool accent = (bool) b.getProperties().getWithDefault ("accent", false);
-        g.setColour (b.isEnabled() ? (accent ? col::acid : col::text) : col::greyDim);
+        g.setColour (b.isEnabled() ? (accent ? col::neon : col::text) : col::greyDim);
         g.setFont (Fonts::title ((float) b.getHeight() * 0.56f, 0.14f));
         g.drawText (b.getButtonText(), b.getLocalBounds(), juce::Justification::centred, false);
     }

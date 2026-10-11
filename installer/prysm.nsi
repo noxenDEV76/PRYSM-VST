@@ -7,7 +7,7 @@
 ; =============================================================================
 Unicode true
 !ifndef VERSION
-  !define VERSION "1.0.0"
+  !define VERSION "1.1.0"
 !endif
 !ifndef VST3_DIR
   !error "Define VST3_DIR: makensis /DVST3_DIR=path\to\PRYSM.vst3 installer\prysm.nsi"

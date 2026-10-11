@@ -96,7 +96,7 @@ static double estimateFreq (const std::vector<float>& v, int a, int b)
 static EngineParams defaults()
 {
     EngineParams p;
-    p.attack = 0.001f; p.decay = 0.2f; p.sustain = 1.0f; p.release = 0.05f;
+    p.env.attack = 0.001f; p.env.decay = 0.2f; p.env.sustain = 1.0f; p.env.release = 0.05f;
     p.mode = PlayMode::OneShot; p.root = 60; p.voices = 8; p.velSens = 1.0f;
     return p;
 }
@@ -218,7 +218,7 @@ static void testModesAndEnvelope()
     CHECK (e->getActiveVoiceCount() == 0, "voice freed after the sample ends");
 
     // Gate
-    auto p = defaults(); p.mode = PlayMode::Gate; p.release = 0.05f;
+    auto p = defaults(); p.mode = PlayMode::Gate; p.env.release = 0.05f;
     e = makeEngine (sineSample (440.0, 0.5f, 2.0), p);
     r = render (*e, { on (0, 60), off (9600, 60) }, 48000);
     CHECK (rms (r.l, 4800, 9000) > 0.25, "GATE plays while the key is held");
@@ -243,7 +243,7 @@ static void testModesAndEnvelope()
     CHECK (std::abs (rms (lo.l, 2000, 10000) / rms (hi.l, 2000, 10000) - 1.0) < 0.02, "velocity sensitivity 0 ignores velocity");
 
     // ADSR
-    p = defaults(); p.attack = 0.2f; p.decay = 0.1f; p.sustain = 0.5f;
+    p = defaults(); p.env.attack = 0.2f; p.env.decay = 0.1f; p.env.sustain = 0.5f;
     e = makeEngine (sineSample (440.0, 0.8f, 3.0), p);
     r = render (*e, { on (0, 60) }, 48000);
     const double early = rms (r.l, 0, 480), mid = rms (r.l, 9000, 9600), sus = rms (r.l, 30000, 36000);
@@ -251,7 +251,7 @@ static void testModesAndEnvelope()
     CHECK (mid > 0.8 * 0.707 * 0.9, "attack: reaches full level after the attack time (" << mid << ")");
     CHECK (std::abs (sus / (0.8 * 0.7071) - 0.5) < 0.04, "sustain level = 50% (" << sus / (0.8 * 0.7071) << ")");
 
-    p = defaults(); p.mode = PlayMode::Gate; p.release = 0.5f;
+    p = defaults(); p.mode = PlayMode::Gate; p.env.release = 0.5f;
     e = makeEngine (sineSample (440.0, 0.8f, 3.0), p);
     r = render (*e, { on (0, 60), off (24000, 60) }, 72000);
     CHECK (rms (r.l, 24000 + 2400, 24000 + 4800) > 0.1, "release: still sounding shortly after note-off");
@@ -320,7 +320,7 @@ static void testPolyphony()
     CHECK (peak (r.l, 0, 238) < 1e-6 && peak (r.l, 240, 400) > 0.0, "MIDI is sample accurate inside a block");
 
     // all-notes-off / all-sound-off
-    p = defaults(); p.mode = PlayMode::Gate; p.release = 0.05f;
+    p = defaults(); p.mode = PlayMode::Gate; p.env.release = 0.05f;
     e = makeEngine (sineSample (440.0, 0.5f, 3.0), p);
     r = render (*e, { on (0, 60), { 4800, juce::MidiMessage::allNotesOff (1) } }, 24000);
     CHECK (rms (r.l, 14000, 24000) < 1e-4, "ALL NOTES OFF releases the voices");
@@ -353,104 +353,79 @@ static void testReplaceDuringPlayback()
     CHECK (std::abs (estimateFreq (c.l, 2000, 9000) - 330.0) < 3.0 || estimateFreq (c.l, 2000, 9000) > 0.0, "engine plays the new sample after clear");
 }
 
-static void testEffects()
+static void testEnvelopeLab()
 {
-    std::cout << "[mutation engine]\n";
-    // FILTER: 8 kHz sine through 500 Hz low-pass is strongly attenuated; high-pass keeps it
-    auto hiSine = sineSample (8000.0, 0.5f, 1.0);
-    auto p = defaults(); p.filterMode = FilterMode::LowPass; p.cutoff = 500.0f; p.resonance = 0.0f;
-    auto e = makeEngine (hiSine, p);
-    auto lp = render (*e, { on (0, 60) }, 24000);
-    p.filterMode = FilterMode::Off; e = makeEngine (hiSine, p);
-    auto dry = render (*e, { on (0, 60) }, 24000);
-    CHECK (rms (lp.l, 6000, 20000) < 0.1 * rms (dry.l, 6000, 20000), "LOW-PASS attenuates content above cutoff");
-    p.filterMode = FilterMode::HighPass; p.cutoff = 2000.0f; e = makeEngine (hiSine, p);
-    auto hp = render (*e, { on (0, 60) }, 24000);
-    CHECK (rms (hp.l, 6000, 20000) > 0.8 * rms (dry.l, 6000, 20000), "HIGH-PASS keeps content above cutoff");
-    auto loSine = sineSample (100.0, 0.5f, 1.0);
-    e = makeEngine (loSine, p);
-    auto hp2 = render (*e, { on (0, 60) }, 24000);
-    CHECK (rms (hp2.l, 6000, 20000) < 0.05, "HIGH-PASS removes content below cutoff");
-    p.filterMode = FilterMode::LowPass; p.cutoff = 20000.0f; p.resonance = 1.0f; e = makeEngine (loSine, p);
-    auto wide = render (*e, { on (0, 60) }, 24000);
-    CHECK (allFinite (wide) && peak (wide.l, 0, 24000) < 5.0, "max resonance stays stable");
+    std::cout << "[envelope lab]\n";
+    // shape function
+    CHECK (std::abs (envCurve (0.0f, 0.8f)) < 1e-6f && std::abs (envCurve (1.0f, 0.8f) - 1.0f) < 1e-5f && std::abs (envCurve (1.0f, -0.8f) - 1.0f) < 1e-5f, "curve keeps its end points");
+    CHECK (std::abs (envCurve (0.37f, 0.0f) - 0.37f) < 1e-6f, "tension 0 is a straight line");
+    CHECK (envCurve (0.5f, 0.8f) < 0.5f && envCurve (0.5f, -0.8f) > 0.5f, "tension sign bends the curve both ways");
+    bool mono = true; float prev = 0.0f;
+    for (int i = 1; i <= 100; ++i) { const float y = envCurve ((float) i / 100.0f, 0.9f); mono = mono && y >= prev; prev = y; }
+    CHECK (mono, "curve is monotonic");
 
-    // DRIVE
-    p = defaults(); auto sine = sineSample (220.0, 0.25f, 1.0);
-    e = makeEngine (sine, p); auto clean = render (*e, { on (0, 60) }, 24000);
-    p.drive = 1.0f; e = makeEngine (sine, p); auto driven = render (*e, { on (0, 60) }, 24000);
-    double diff = 0; for (int i = 8000; i < 20000; ++i) diff += std::abs (clean.l[(size_t) i] - driven.l[(size_t) i]);
-    CHECK (diff / 12000.0 > 0.01, "DRIVE changes the waveform (adds harmonics)");
-    const double lvl = rms (driven.l, 8000, 20000) / rms (clean.l, 8000, 20000);
-    CHECK (lvl > 0.7 && lvl < 1.6, "DRIVE output level is compensated (x" << lvl << ")");
-    p.drive = 0.0f; e = makeEngine (sine, p); auto d0 = render (*e, { on (0, 60) }, 24000);
-    // drive 0 must be transparent apart from the (tiny) oversampler latency
-    CHECK (std::abs (rms (d0.l, 8000, 20000) - rms (clean.l, 8000, 20000)) < 1e-3, "DRIVE 0 is transparent");
+    auto sine = sineSample (440.0, 0.8f, 4.0);
+    const double full = 0.8 * 0.7071;
 
-    // STEREO width
-    auto st = makeSample ([] (int ch, int i) { return 0.4f * (float) std::sin (0.05 * i + (ch ? 1.0 : 0.0)); }, 48000, 2);
-    p = defaults(); p.width = 0.0f; e = makeEngine (st, p);
-    auto w0 = render (*e, { on (0, 60) }, 20000);
-    double maxLR = 0; for (int i = 3000; i < 20000; ++i) maxLR = juce::jmax (maxLR, (double) std::abs (w0.l[(size_t) i] - w0.r[(size_t) i]));
-    CHECK (maxLR < 1e-4, "WIDTH 0 collapses to mono");
-    p.width = 1.0f; e = makeEngine (st, p); auto w1 = render (*e, { on (0, 60) }, 20000);
-    p.width = 2.0f; e = makeEngine (st, p); auto w2 = render (*e, { on (0, 60) }, 20000);
-    double msum = 0; for (int i = 3000; i < 20000; ++i) msum = juce::jmax (msum, (double) std::abs ((w1.l[(size_t) i] + w1.r[(size_t) i]) - (w2.l[(size_t) i] + w2.r[(size_t) i])));
-    CHECK (msum < 1e-3, "WIDTH keeps the mono sum unchanged (mono compatible)");
-    CHECK (rms (w2.l, 3000, 20000) != rms (w1.l, 3000, 20000), "WIDTH 200% widens the image");
+    // DELAY
+    auto p = defaults(); p.env.delay = 0.1f;
+    auto e = makeEngine (sine, p);
+    auto r = render (*e, { on (0, 60) }, 24000);
+    CHECK (rms (r.l, 0, 4500) < 1e-4, "DELAY: silent during the delay");
+    CHECK (rms (r.l, 6000, 9000) > 0.4 * full, "DELAY: sound starts after the delay");
 
-    // REVERB tail outlives the one-shot
-    p = defaults(); p.mode = PlayMode::Gate; p.release = 0.01f; p.reverbMix = 1.0f; p.reverbSize = 0.8f;
-    e = makeEngine (sineSample (440.0, 0.5f, 1.0), p);
-    auto rv = render (*e, { on (0, 60), off (4800, 60) }, 48000);
-    CHECK (rms (rv.l, 12000, 24000) > 1e-3, "REVERB leaves a tail after the voice ended");
-    p.reverbMix = 0.0f; e = makeEngine (sineSample (440.0, 0.5f, 1.0), p);
-    auto nrv = render (*e, { on (0, 60), off (4800, 60) }, 48000);
-    CHECK (rms (nrv.l, 12000, 24000) < 1e-4, "REVERB mix 0 = no tail");
+    // HOLD + DECAY + SUSTAIN
+    p = defaults(); p.env.attack = 0.01f; p.env.hold = 0.2f; p.env.decay = 0.1f; p.env.sustain = 0.3f;
+    e = makeEngine (sine, p);
+    r = render (*e, { on (0, 60) }, 48000);
+    const double held = rms (r.l, 2000, 9000), after = rms (r.l, 24000, 36000);
+    CHECK (std::abs (held / full - 1.0) < 0.04, "HOLD: stays at full level (" << held / full << ")");
+    CHECK (std::abs (after / full - 0.3) < 0.03, "DECAY lands on the sustain level (" << after / full << ")");
 
-    // TAIL: end fade is applied
-    p = defaults(); p.end = 0.5f; p.tailMs = 400.0f;
-    e = makeEngine (sineSample (440.0, 0.5f, 1.0), p);
-    auto tl = render (*e, { on (0, 60) }, 30000);
-    CHECK (rms (tl.l, 21000, 23000) < 0.6 * rms (tl.l, 4000, 6000), "TAIL fades the end of the sample region");
-
-    // MOTION modulates the signal and is deterministic
-    p = defaults(); p.filterMode = FilterMode::LowPass; p.cutoff = 2000.0f; p.motion = 1.0f; p.motionRate = 4.0f; p.motionDest = MotionDest::Filter;
-    auto saw = makeSample ([] (int, int i) { return 0.4f * (float) ((i % 109) / 54.5 - 1.0); }, 96000);
-    e = makeEngine (saw, p); auto m1 = render (*e, { on (0, 60) }, 48000);
-    e = makeEngine (saw, p); auto m2 = render (*e, { on (0, 60) }, 48000);
-    p.motion = 0.0f; e = makeEngine (saw, p); auto m0 = render (*e, { on (0, 60) }, 48000);
-    CHECK (m1.l == m2.l, "MOTION is deterministic per note");
-    CHECK (std::abs (rms (m1.l, 0, 12000) - rms (m0.l, 0, 12000)) > 1e-3 || std::abs (rms (m1.l, 12000, 24000) - rms (m0.l, 12000, 24000)) > 1e-3, "MOTION changes the sound");
-    for (auto dest : { MotionDest::Pitch, MotionDest::Amp, MotionDest::Pan })
+    // ATTACK tension: +1 slow start, 0 linear, -1 fast start
+    auto attackLevel = [&] (float t)
     {
-        p.motion = 1.0f; p.motionDest = dest; e = makeEngine (saw, p);
-        auto mm = render (*e, { on (0, 60) }, 24000);
-        CHECK (allFinite (mm), "MOTION target " << (int) dest << " is stable");
-    }
-    p.motionDest = MotionDest::Amp; e = makeEngine (sine, p); auto am = render (*e, { on (0, 60) }, 48000);
-    CHECK (rms (am.l, 2000, 4000) != rms (am.l, 8000, 10000), "MOTION AMP produces tremolo");
+        auto q = defaults(); q.env.attack = 0.4f; q.env.tensionA = t;
+        auto en = makeEngine (sine, q);
+        auto rr = render (*en, { on (0, 60) }, 9000);
+        return rms (rr.l, 4000, 5600);
+    };
+    const double aPos = attackLevel (1.0f), aLin = attackLevel (0.0f), aNeg = attackLevel (-1.0f);
+    CHECK (aPos < aLin && aLin < aNeg, "ATTACK tension changes the curve (" << aPos << " < " << aLin << " < " << aNeg << ")");
 
-    // RANDOM: reproducible and bounded
-    p = defaults(); p.random = 1.0f; p.randomSeed = 7;
-    e = makeEngine (sineSample (440.0), p); auto ra = render (*e, { on (0, 60), off (200, 60), on (12000, 60) }, 24000);
-    e = makeEngine (sineSample (440.0), p); auto rb = render (*e, { on (0, 60), off (200, 60), on (12000, 60) }, 24000);
-    CHECK (ra.l == rb.l, "RANDOM with the same seed is reproducible");
-    p.randomSeed = 8; e = makeEngine (sineSample (440.0), p); auto rc = render (*e, { on (0, 60), off (200, 60), on (12000, 60) }, 24000);
-    CHECK (ra.l != rc.l, "RANDOM with another seed differs");
-    p.random = 0.0f; e = makeEngine (sineSample (440.0), p); auto r0 = render (*e, { on (0, 60) }, 12000);
-    e = makeEngine (sineSample (440.0), defaults()); auto base = render (*e, { on (0, 60) }, 12000);
-    CHECK (r0.l == base.l, "RANDOM 0 is bypassed");
-    p.random = 1.0f; p.randomSeed = 3; e = makeEngine (sineSample (440.0), p);
-    auto rr = render (*e, { on (0, 60) }, 24000);
-    CHECK (std::abs (estimateFreq (rr.l, 2000, 20000) / 440.0 - 1.0) < 0.016, "RANDOM pitch variation is bounded (<= ~25 cents)");
+    // RELEASE tension
+    auto releaseLevel = [&] (float t)
+    {
+        auto q = defaults(); q.mode = PlayMode::Gate; q.env.release = 0.4f; q.env.tensionR = t;
+        auto en = makeEngine (sine, q);
+        auto rr = render (*en, { on (0, 60), off (24000, 60) }, 48000);
+        CHECK (rms (rr.l, 24000 + 20000, 48000) < 1e-4, "RELEASE ends silent (tension " << t << ")");
+        return rms (rr.l, 24000 + 3000, 24000 + 4600);
+    };
+    const double rPos = releaseLevel (1.0f), rLin = releaseLevel (0.0f), rNeg = releaseLevel (-1.0f);
+    CHECK (rPos > rLin && rLin > rNeg, "RELEASE tension changes the curve (" << rPos << " > " << rLin << " > " << rNeg << ")");
 
-    // Output stays finite with everything on
-    p = defaults(); p.drive = 1.0f; p.filterMode = FilterMode::LowPass; p.resonance = 1.0f; p.motion = 1.0f; p.random = 1.0f;
-    p.reverbMix = 1.0f; p.reverbSize = 1.0f; p.width = 2.0f; p.tailMs = 2000.0f;
-    e = makeEngine (saw, p);
-    auto all = render (*e, { on (0, 60), on (100, 64), on (200, 67), on (300, 72) }, 48000);
-    CHECK (allFinite (all), "all effects at maximum stay finite");
+    // key released during the DELAY: voice ends cleanly, nothing is heard
+    p = defaults(); p.mode = PlayMode::Gate; p.env.delay = 1.0f;
+    e = makeEngine (sine, p);
+    r = render (*e, { on (0, 60), off (1000, 60) }, 24000);
+    CHECK (rms (r.l, 0, 24000) < 1e-4 && e->getActiveVoiceCount() == 0, "note-off during DELAY ends the voice silently");
+
+    // no clicks across every stage, even with strong tensions
+    p = defaults(); p.mode = PlayMode::Gate;
+    p.env.delay = 0.02f; p.env.attack = 0.05f; p.env.hold = 0.05f; p.env.decay = 0.1f; p.env.sustain = 0.4f; p.env.release = 0.1f;
+    p.env.tensionA = -1.0f; p.env.tensionD = 1.0f; p.env.tensionR = -1.0f;
+    e = makeEngine (sineSample (220.0, 0.5f, 3.0), p);
+    r = render (*e, { on (0, 60), off (24000, 60) }, 48000);
+    double maxStep = 0; for (size_t i = 1; i < r.l.size(); ++i) maxStep = juce::jmax (maxStep, (double) std::abs (r.l[i] - r.l[i - 1]));
+    CHECK (maxStep < 0.06, "no clicks through DELAY/ATT/HOLD/DEC/SUS/REL with strong tensions (max step " << maxStep << ")");
+
+    // extreme settings stay finite
+    p = defaults(); p.env.delay = 4.0f; p.env.attack = 0.001f; p.env.hold = 4.0f; p.env.decay = 0.001f; p.env.sustain = 0.0f; p.env.release = 0.003f;
+    p.env.tensionA = 1.0f; p.env.tensionD = -1.0f; p.env.tensionR = 1.0f;
+    e = makeEngine (sine, p);
+    r = render (*e, { on (0, 60), on (100, 64), on (200, 67), on (300, 72) }, 48000);
+    CHECK (allFinite (r), "extreme envelope settings stay finite");
 }
 
 //==============================================================================
@@ -500,7 +475,6 @@ static void testProcessor (const juce::File& dir)
         juce::AudioBuffer<float> b2 (2, 480); juce::MidiBuffer none; p.processBlock (b2, none);
         CHECK (b2.getMagnitude (0, 480) > 0.2f, "loaded sample is audible through processBlock");
         CHECK (p.engine.monitor.activeVoices.load() >= 1, "voice monitor reports active voices");
-        CHECK (p.engine.monitor.midiCounter.load() >= 2, "voice monitor counts MIDI events");
 
         // failed load keeps the previous sample
         auto garbage = dir.getChildFile ("garbage.wav"); garbage.replaceWithText ("not a wave file");
@@ -655,7 +629,7 @@ int main (int argc, char** argv)
     testRegionAndReverse();
     testPolyphony();
     testReplaceDuringPlayback();
-    testEffects();
+    testEnvelopeLab();
     testProcessor (dir);
     testEditor (dir);
 

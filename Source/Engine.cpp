@@ -28,40 +28,23 @@ inline void panGains (float pan, float& gl, float& gr) noexcept
 }
 } // namespace
 
-SamplerEngine::SamplerEngine() : oversampler (2, 1, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true, false) {}
+SamplerEngine::SamplerEngine() = default;
 
 void SamplerEngine::prepare (double sampleRate)
 {
     sr = sampleRate > 0 ? sampleRate : 44100.0;
-    fxBuffer.setSize (2, kChunk, false, true, true);
-    oversampler.initProcessing ((size_t) kChunk);
-    oversampler.reset();
-    reverb.setSampleRate (sr);
-    reverb.reset();
-    smGain.reset (sr, 0.02);  smPan.reset (sr, 0.02);  smDrive.reset (sr, 0.02);
-    smWidth.reset (sr, 0.02); smReverbMix.reset (sr, 0.03); smResonance.reset (sr, 0.02);
+    smGain.reset (sr, 0.02);  smPan.reset (sr, 0.02);
     smPitchSemis.reset (sr, 0.01);
-    smCutoff.reset (sr, 0.015);
     reset();
 }
 
 void SamplerEngine::reset()
 {
-    for (auto& v : voice) { v.active = false; v.sample.reset(); v.adsr.reset(); v.svf[0].reset(); v.svf[1].reset(); }
+    for (auto& v : voice) { v.active = false; v.sample.reset(); v.adsr.reset(); }
     sustainPedal = false;
     bendNorm = 0.0f;
-    tailCounter = 0;
-    lastReverbSize = -1.0f;
-    lastSeed = -1;
-    oversampler.reset();
-    reverb.reset();
     smGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (params.gainDb));
     smPan.setCurrentAndTargetValue (params.pan);
-    smDrive.setCurrentAndTargetValue (params.drive);
-    smWidth.setCurrentAndTargetValue (params.width);
-    smReverbMix.setCurrentAndTargetValue (params.reverbMix);
-    smResonance.setCurrentAndTargetValue (params.resonance);
-    smCutoff.setCurrentAndTargetValue (juce::jmax (20.0f, params.cutoff));
     smPitchSemis.setCurrentAndTargetValue ((float) (params.transpose) + params.tuneCents * 0.01f - (float) params.root);
     monitor.activeVoices = 0;
     monitor.playhead = -1.0f;
@@ -74,13 +57,6 @@ int SamplerEngine::getActiveVoiceCount() const noexcept
     return c;
 }
 
-float SamplerEngine::nextRandom() noexcept
-{
-    // xorshift32 -> [-1, 1]
-    rngState ^= rngState << 13; rngState ^= rngState >> 17; rngState ^= rngState << 5;
-    return (float) ((double) rngState / 2147483647.5 - 1.0);
-}
-
 //==============================================================================
 void SamplerEngine::process (juce::AudioBuffer<float>& buffer, const juce::MidiBuffer& midi)
 {
@@ -88,20 +64,8 @@ void SamplerEngine::process (juce::AudioBuffer<float>& buffer, const juce::MidiB
     buffer.clear();
     if (buffer.getNumChannels() < 2) return;
 
-    if (lastSeed != params.randomSeed)
-    {
-        lastSeed = params.randomSeed;
-        rngState = 2463534242u ^ (juce::uint32) (params.randomSeed * 2654435761u + 1u);
-        if (rngState == 0) rngState = 1;
-    }
-
     smGain.setTargetValue (juce::Decibels::decibelsToGain (params.gainDb, -48.0f));
     smPan.setTargetValue (params.pan);
-    smDrive.setTargetValue (params.drive);
-    smWidth.setTargetValue (params.width);
-    smReverbMix.setTargetValue (params.reverbMix);
-    smResonance.setTargetValue (params.resonance);
-    smCutoff.setTargetValue (juce::jlimit (20.0f, 20000.0f, params.cutoff));
 
     auto* outL = buffer.getWritePointer (0);
     auto* outR = buffer.getWritePointer (1);
@@ -128,17 +92,13 @@ void SamplerEngine::process (juce::AudioBuffer<float>& buffer, const juce::MidiB
     const float pl = buffer.getMagnitude (0, 0, numSamples);
     const float pr = buffer.getMagnitude (1, 0, numSamples);
     const float decay = std::pow (0.5f, (float) numSamples / (float) sr / 0.25f);
-    monitor.peakL = juce::jmax (pl, monitor.peakL.load() * decay);
-    monitor.peakR = juce::jmax (pr, monitor.peakR.load() * decay);
     monitor.activity = juce::jmax (juce::jmax (pl, pr), monitor.activity.load() * decay);
-    if (pl > 1.0f || pr > 1.0f) monitor.overload = true;
     monitor.activeVoices = getActiveVoiceCount();
 }
 
 //==============================================================================
 void SamplerEngine::handleMidi (const juce::MidiMessage& m)
 {
-    monitor.midiCounter.fetch_add (1, std::memory_order_relaxed);
     auto setHeld = [this] (int n, bool on)
     {
         auto& word = n < 64 ? monitor.heldLo : monitor.heldHi;
@@ -218,28 +178,18 @@ void SamplerEngine::noteOn (int note, float velocity)
     if (e0 < s0) std::swap (s0, e0);
     if (e0 - s0 < 16.0) { e0 = juce::jmin ((double) N, s0 + 16.0); s0 = juce::jmax (0.0, e0 - 16.0); }
 
-    const float rnd = params.random;
-    const float rPitchCents = nextRandom() * rnd * 25.0f;
-    v.randCutoffOct = nextRandom() * rnd * 1.0f;
-    v.randPan       = nextRandom() * rnd * 0.4f;
-    const float rGainDb = nextRandom() * rnd * 2.0f;
-
     v.active = true; v.killing = false; v.noteHeld = true; v.pendingRelease = false;
     v.note = note; v.age = ++ageCounter;
     v.sample = sample;
     v.reverse = params.reverse;
     v.regionStart = s0; v.regionEnd = e0;
     v.pos = v.reverse ? e0 - 1.0 : s0;
-    v.velGain = ((1.0f - params.velSens) + params.velSens * velocity) * juce::Decibels::decibelsToGain (rGainDb);
-    v.voiceRatio = (sample->sampleRate / sr) * std::exp2 ((double) note / 12.0 + (double) rPitchCents / 1200.0);
+    v.velGain = ((1.0f - params.velSens) + params.velSens * velocity);
+    v.voiceRatio = (sample->sampleRate / sr) * std::exp2 ((double) note / 12.0);
     v.killGain = 1.0f;
-    v.lfoPhase = 0.0f;
-    v.svf[0].reset(); v.svf[1].reset();
 
-    juce::ADSR::Parameters ap;
-    ap.attack = params.attack; ap.decay = params.decay; ap.sustain = params.sustain; ap.release = params.release;
     v.adsr.setSampleRate (sr);
-    v.adsr.setParameters (ap);
+    v.adsr.setParameters (params.env);
     v.adsr.noteOn();
     monitor.playhead = (float) (v.pos / N);
 }
@@ -262,61 +212,24 @@ void SamplerEngine::renderVoice (Voice& v, int n)
     const float* dL = s.audio.getReadPointer (0);
     const float* dR = s.numChannels() > 1 ? s.audio.getReadPointer (1) : dL;
 
-    juce::ADSR::Parameters ap;
-    ap.attack = params.attack; ap.decay = params.decay; ap.sustain = params.sustain; ap.release = params.release;
-    v.adsr.setParameters (ap);
+    v.adsr.setParameters (params.env);
 
-    const bool filterOn = params.filterMode != FilterMode::Off;
-    const bool highPass = params.filterMode == FilterMode::HighPass;
-    const float motionAmt = params.motion;
-    const bool motionOn = motionAmt > 0.0001f;
-    const float lfoInc = params.motionRate / (float) sr;
-    const double fadeLen = juce::jmax (0.003, (double) params.tailMs * 0.001) * sr; // output frames
+    constexpr double fadeLen = 0.003 * 48000.0; // short fade at the end of the region (click prevention)
+    const double fade = fadeLen * (sr / 48000.0);
     const double dir = v.reverse ? -1.0 : 1.0;
-
-    float panL, panR;
-    panGains (v.randPan, panL, panR);
 
     for (int i = 0; i < n; ++i)
     {
-        // --- LFO (per voice, restarts on note-on so every note moves identically)
-        float lfo = 0.0f;
-        if (motionOn)
-        {
-            lfo = std::sin (2.0f * kPi * v.lfoPhase);
-            v.lfoPhase += lfoInc; if (v.lfoPhase >= 1.0f) v.lfoPhase -= 1.0f;
-        }
-
-        // --- pitch
-        double rate = v.voiceRatio * (double) ratioArr[(size_t) i];
-        if (motionOn && params.motionDest == MotionDest::Pitch)
-            rate *= std::exp2 ((double) (lfo * motionAmt) / 12.0); // up to +/- 1 semitone
+        const double rate = v.voiceRatio * (double) ratioArr[(size_t) i];
 
         // --- read (Hermite)
         float l = hermite (dL, N, v.pos), r = (dR == dL) ? l : hermite (dR, N, v.pos);
 
-        // --- filter (coefficients refreshed every 8 samples)
-        if (filterOn)
-        {
-            if ((i & 7) == 0)
-            {
-                float fc = cutoffArr[(size_t) i] * std::exp2 (v.randCutoffOct);
-                if (motionOn && params.motionDest == MotionDest::Filter) fc *= std::exp2 (lfo * motionAmt * 3.0f);
-                const float q = 0.707f * std::pow (18.0f, resArr[(size_t) i]);
-                v.svf[0].setup (fc, q, (float) sr);
-                v.svf[1].a1 = v.svf[0].a1; v.svf[1].a2 = v.svf[0].a2; v.svf[1].a3 = v.svf[0].a3; v.svf[1].k = v.svf[0].k;
-            }
-            l = v.svf[0].process (l, highPass);
-            r = v.svf[1].process (r, highPass);
-        }
-
         // --- amplitude
         float g = v.adsr.getNextSample() * v.velGain;
-        if (motionOn && params.motionDest == MotionDest::Amp)
-            g *= 1.0f - motionAmt * 0.5f * (1.0f - lfo);
         const double remaining = v.reverse ? (v.pos - v.regionStart) : (v.regionEnd - v.pos); // source frames
         const double remainingOut = remaining / juce::jmax (1.0e-6, rate);
-        if (remainingOut < fadeLen) g *= (float) juce::jmax (0.0, remainingOut / fadeLen);
+        if (remainingOut < fade) g *= (float) juce::jmax (0.0, remainingOut / fade);
         if (v.killing)
         {
             v.killGain -= 1.0f / (0.004f * (float) sr);
@@ -325,11 +238,8 @@ void SamplerEngine::renderVoice (Voice& v, int n)
         }
         l *= g; r *= g;
 
-        // --- pan (per voice)
-        if (motionOn && params.motionDest == MotionDest::Pan)
-            panGains (v.randPan + lfo * motionAmt, panL, panR);
-        mixL[(size_t) i] += l * panL;
-        mixR[(size_t) i] += r * panR;
+        mixL[(size_t) i] += l;
+        mixR[(size_t) i] += r;
 
         // --- advance / end
         v.pos += dir * rate;
@@ -352,8 +262,6 @@ void SamplerEngine::renderChunk (float* outL, float* outR, int n)
     for (int i = 0; i < n; ++i)
     {
         ratioArr[(size_t) i]  = std::exp2 ((smPitchSemis.getNextValue() + bendSemis) / 12.0f);
-        cutoffArr[(size_t) i] = smCutoff.getNextValue();
-        resArr[(size_t) i]    = smResonance.getNextValue();
     }
 
     bool anyActive = false;
@@ -362,7 +270,6 @@ void SamplerEngine::renderChunk (float* outL, float* outR, int n)
 
     if (anyActive)
     {
-        tailCounter = (juce::int64) ((1.5 + 8.0 * params.reverbSize) * sr);
         // newest voice playhead
         const Voice* newest = nullptr;
         for (auto& v : voice) if (v.active && ! v.killing && (newest == nullptr || v.age > newest->age)) newest = &v;
@@ -375,83 +282,13 @@ void SamplerEngine::renderChunk (float* outL, float* outR, int n)
     // this only decrements a counter and never frees memory on the audio thread).
     for (auto& v : voice) if (! v.active && v.sample != nullptr) v.sample.reset();
 
-    if (! anyActive && tailCounter <= 0)
-    {
-        std::fill (outL, outL + n, 0.0f);
-        std::fill (outR, outR + n, 0.0f);
-        smGain.skip (n); smPan.skip (n); smDrive.skip (n); smWidth.skip (n); smReverbMix.skip (n);
-        return;
-    }
-    if (! anyActive) tailCounter -= n;
-
-    // --- Global FX chain on fxBuffer
-    float* fl = fxBuffer.getWritePointer (0);
-    float* fr = fxBuffer.getWritePointer (1);
-    std::copy (mixL.begin(), mixL.begin() + n, fl);
-    std::copy (mixR.begin(), mixR.begin() + n, fr);
-
-    // Drive (2x oversampled tanh, level-compensated, dry/wet blended so 0 = transparent)
-    {
-        juce::dsp::AudioBlock<float> block (fxBuffer);
-        auto sub = block.getSubBlock (0, (size_t) n);
-        auto up = oversampler.processSamplesUp (sub);
-        const size_t un = up.getNumSamples();
-        float* ul = up.getChannelPointer (0);
-        float* ur = up.getChannelPointer (1);
-        // drive amount is constant over the chunk after smoothing evaluation
-        float driveAmt = 0.0f;
-        for (int i = 0; i < n; ++i) driveAmt = smDrive.getNextValue();
-        const float g = 1.0f + 24.0f * driveAmt * driveAmt;
-        const float comp = (0.5f / std::tanh (0.5f * g)) / (1.0f + 0.06f * (g - 1.0f)); // level-matched to the dry signal
-        for (size_t i = 0; i < un; ++i)
-        {
-            const float dl = ul[i], dr = ur[i];
-            ul[i] = (1.0f - driveAmt) * dl + driveAmt * std::tanh (g * dl) * comp;
-            ur[i] = (1.0f - driveAmt) * dr + driveAmt * std::tanh (g * dr) * comp;
-        }
-        oversampler.processSamplesDown (sub);
-    }
-
-    // Stereo width (mid/side; mono sum is unchanged => mono compatible)
-    for (int i = 0; i < n; ++i)
-    {
-        const float w = smWidth.getNextValue();
-        const float m = 0.5f * (fl[i] + fr[i]);
-        const float sd = 0.5f * (fl[i] - fr[i]) * w;
-        fl[i] = m + sd; fr[i] = m - sd;
-    }
-
-    // Reverb (send style: wet only, blended by mix)
-    {
-        if (std::abs (lastReverbSize - params.reverbSize) > 1.0e-4f)
-        {
-            lastReverbSize = params.reverbSize;
-            reverbParams.roomSize = 0.2f + 0.78f * params.reverbSize;
-            reverbParams.damping = 0.45f;
-            reverbParams.wetLevel = 0.33f;
-            reverbParams.dryLevel = 0.0f;
-            reverbParams.width = 1.0f;
-            reverbParams.freezeMode = 0.0f;
-            reverb.setParameters (reverbParams);
-        }
-        std::copy (fl, fl + n, tmpA.begin());
-        std::copy (fr, fr + n, tmpB.begin());
-        reverb.processStereo (tmpA.data(), tmpB.data(), n);
-        for (int i = 0; i < n; ++i)
-        {
-            const float mix = smReverbMix.getNextValue();
-            fl[i] += mix * tmpA[(size_t) i];
-            fr[i] += mix * tmpB[(size_t) i];
-        }
-    }
-
     // Master volume + pan
     for (int i = 0; i < n; ++i)
     {
         const float g = smGain.getNextValue();
         float pl, pr;
         panGains (smPan.getNextValue(), pl, pr);
-        float a = fl[i] * g * pl, b = fr[i] * g * pr;
+        float a = mixL[(size_t) i] * g * pl, b = mixR[(size_t) i] * g * pr;
         if (! std::isfinite (a)) a = 0.0f;
         if (! std::isfinite (b)) b = 0.0f;
         outL[i] = a; outR[i] = b;

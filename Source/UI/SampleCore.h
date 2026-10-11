@@ -3,12 +3,12 @@
 
 namespace prysm::ui
 {
-/** Main sample view: drag-and-drop zone, waveform, start/end markers, playhead and the animated alien "core". */
+/** Main sample view: drag-and-drop zone, waveform, start/end markers and playhead. */
 class SampleCore : public Panel
 {
 public:
     explicit SampleCore (PrysmProcessor& p)
-        : Panel ("SAMPLE CORE"), proc (p),
+        : Panel (""), proc (p),
           pStart (p.apvts.getParameter (ids::start)), pEnd (p.apvts.getParameter (ids::end))
     {
         loadButton.setButtonText ("LOAD SAMPLE");
@@ -22,15 +22,6 @@ public:
         clearButton.onClick = [this] { proc.clearSample(); };
         addAndMakeVisible (clearButton);
 
-        juce::Random rng (20241011);
-        for (auto& pt : particles)
-        {
-            pt.ang = rng.nextFloat() * juce::MathConstants<float>::twoPi;
-            pt.rad = 0.18f + 0.82f * std::sqrt (rng.nextFloat());
-            pt.speed = (rng.nextFloat() - 0.5f) * 0.35f;
-            pt.size = 0.9f + rng.nextFloat() * 1.9f;
-            pt.phase = rng.nextFloat() * juce::MathConstants<float>::twoPi;
-        }
         setMouseCursor (juce::MouseCursor::NormalCursor);
     }
 
@@ -69,8 +60,8 @@ public:
     void resized() override
     {
         auto b = getLocalBounds();
-        clearButton.setBounds (b.getRight() - 62, 5, 52, 20);
-        loadButton.setBounds (b.getRight() - 62 - 8 - 110, 5, 110, 20);
+        clearButton.setBounds (b.getRight() - 70, 12, 58, 24);
+        loadButton.setBounds (b.getRight() - 70 - 8 - 130, 12, 130, 24);
         rebuildWaveform();
     }
 
@@ -81,18 +72,18 @@ public:
         auto wa = waveArea();
 
         // ---- info row
-        auto info = getLocalBounds().toFloat().withTrimmedTop (34.0f).withHeight (24.0f).reduced (14.0f, 0.0f);
+        auto info = getLocalBounds().toFloat().withTrimmedTop (12.0f).withHeight (24.0f).reduced (18.0f, 0.0f);
         if (currentSample != nullptr)
         {
             g.setColour (col::text);
             g.setFont (Fonts::title (19.0f, 0.06f));
-            g.drawText (currentSample->name, info.withWidth (info.getWidth() * 0.55f).toNearestInt(), juce::Justification::centredLeft, true);
+            g.drawText (currentSample->name, info.withWidth (info.getWidth() * 0.5f).toNearestInt(), juce::Justification::centredLeft, true);
             g.setFont (Fonts::value (13.0f));
             const auto ch = currentSample->numChannels() == 1 ? "MONO" : "STEREO";
             const juce::String stats = "DUR " + juce::String (currentSample->durationSeconds(), 3) + " s   |   "
                                      + juce::String (currentSample->sampleRate / 1000.0, 1) + " kHz   |   " + ch;
             g.setColour (col::grey);
-            g.drawText (stats, info.toNearestInt(), juce::Justification::centredRight, false);
+            g.drawText (stats, info.withTrimmedRight (216.0f).toNearestInt(), juce::Justification::centredRight, false);
         }
         else
         {
@@ -108,7 +99,7 @@ public:
         g.reduceClipRegion (clip);
         g.setGradientFill (juce::ColourGradient (col::bg0.brighter (0.02f), wa.getCentreX(), wa.getCentreY(), col::bg0.darker (0.2f), wa.getX(), wa.getY(), true));
         g.fillRect (wa);
-        paintCore (g, wa);
+        paintGlow (g, wa);
         paintGrid (g, wa);
         if (currentSample != nullptr) paintWave (g, wa);
         g.restoreState();
@@ -163,11 +154,9 @@ public:
     juce::TextButton loadButton, clearButton;
 
 private:
-    struct Particle { float ang, rad, speed, size, phase; };
-
     juce::Rectangle<float> waveArea() const
     {
-        return getLocalBounds().toFloat().withTrimmedTop (62.0f).reduced (12.0f, 0.0f).withTrimmedBottom (12.0f);
+        return getLocalBounds().toFloat().withTrimmedTop (46.0f).reduced (14.0f, 0.0f).withTrimmedBottom (14.0f);
     }
     float xFor (float n) const { auto wa = waveArea(); return wa.getX() + n * wa.getWidth(); }
     int markerAt (juce::Point<float> p) const
@@ -202,60 +191,12 @@ private:
         waveCentreY = cy;
     }
 
-    void paintCore (juce::Graphics& g, juce::Rectangle<float> wa)
+    void paintGlow (juce::Graphics& g, juce::Rectangle<float> wa)
     {
-        const auto c = wa.getCentre().translated (0.0f, -6.0f);
+        const auto c = wa.getCentre();
         const float act = animate ? juce::jlimit (0.0f, 1.0f, activity) : 0.0f;
-        const float R = wa.getHeight() * 0.62f;
-
-        // nucleus glow
-        g.setGradientFill (juce::ColourGradient (col::radio.withAlpha (0.10f + 0.16f * act), c.x, c.y, juce::Colours::transparentBlack, c.x + R * 1.6f, c.y, true));
-        g.fillEllipse (c.x - R * 1.6f, c.y - R, R * 3.2f, R * 2.0f);
-        g.setGradientFill (juce::ColourGradient (col::acid.withAlpha (0.10f + 0.22f * act), c.x, c.y, juce::Colours::transparentBlack, c.x + R * 0.5f, c.y, true));
-        g.fillEllipse (c.x - R * 0.5f, c.y - R * 0.5f, R, R);
-
-        // organic membranes
-        for (int k = 0; k < 3; ++k)
-        {
-            juce::Path ring;
-            const float base = R * (0.42f + 0.2f * (float) k);
-            const int N = 96;
-            for (int i = 0; i <= N; ++i)
-            {
-                const float th = juce::MathConstants<float>::twoPi * (float) i / (float) N;
-                const float wob = 1.0f + 0.05f * std::sin (3.0f * th + time * 0.6f + (float) k)
-                                       + 0.035f * std::sin (5.0f * th - time * 0.9f + 1.7f * (float) k)
-                                       + act * 0.07f * std::sin (7.0f * th + time * 3.0f);
-                const juce::Point<float> p (c.x + std::cos (th) * base * wob * 1.9f, c.y + std::sin (th) * base * wob * 0.95f);
-                if (i == 0) ring.startNewSubPath (p); else ring.lineTo (p);
-            }
-            ring.closeSubPath();
-            g.setColour ((k == 1 ? col::acid : col::radio).withAlpha (0.07f + 0.05f * (float) (2 - k) + 0.10f * act));
-            g.strokePath (ring, juce::PathStrokeType (1.1f));
-        }
-
-        // particles
-        if (animate)
-        {
-            for (auto& pt : particles)
-            {
-                const float a = pt.ang + time * pt.speed * (1.0f + act * 2.5f);
-                const float r = pt.rad * (1.0f + 0.05f * std::sin (time * 0.5f + pt.phase)) + act * 0.05f * std::sin (pt.phase + time * 6.0f);
-                const float px = c.x + std::cos (a) * r * wa.getWidth() * 0.5f * 0.94f;
-                const float py = c.y + std::sin (a) * r * wa.getHeight() * 0.5f * 0.8f;
-                const float tw = 0.5f + 0.5f * std::sin (time * 1.3f + pt.phase);
-                const float alpha = 0.10f + 0.22f * tw + 0.40f * act * (1.0f - pt.rad * 0.5f);
-                g.setColour (col::radio.withAlpha (alpha * 0.35f));
-                g.fillEllipse (px - pt.size * 1.8f, py - pt.size * 1.8f, pt.size * 3.6f, pt.size * 3.6f);
-                g.setColour ((pt.size > 2.2f ? col::acid : col::radio).withAlpha (juce::jmin (0.95f, alpha)));
-                g.fillEllipse (px - pt.size * 0.5f, py - pt.size * 0.5f, pt.size, pt.size);
-            }
-        }
-        else // static core when animations are reduced
-        {
-            g.setColour (col::radio.withAlpha (0.5f));
-            g.fillEllipse (c.x - 2.5f, c.y - 2.5f, 5.0f, 5.0f);
-        }
+        g.setGradientFill (juce::ColourGradient (col::neon.withAlpha (0.10f + 0.20f * act), c.x, c.y, juce::Colours::transparentBlack, wa.getX(), c.y, true));
+        g.fillRect (wa);
     }
 
     void paintGrid (juce::Graphics& g, juce::Rectangle<float> wa)
@@ -286,23 +227,23 @@ private:
 
     void paintWave (juce::Graphics& g, juce::Rectangle<float> wa)
     {
-        g.setGradientFill (juce::ColourGradient (col::acid.withAlpha (0.55f), 0, wa.getY(), col::radio.withAlpha (0.35f), 0, wa.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (col::glow.withAlpha (0.70f), 0, wa.getY(), col::violet.withAlpha (0.40f), 0, wa.getBottom(), false));
         g.fillPath (wavePath);
-        g.setColour (col::acid.withAlpha (0.9f));
+        g.setColour (col::neon.withAlpha (0.9f));
         g.strokePath (wavePath, juce::PathStrokeType (0.8f));
 
         const float xs = xFor (startN), xe = xFor (endN);
-        g.setColour (col::bg0.withAlpha (0.62f));
+        g.setColour (col::bg0.withAlpha (0.66f));
         g.fillRect (juce::Rectangle<float> (wa.getX(), wa.getY(), juce::jmax (0.0f, xs - wa.getX()), wa.getHeight()));
         g.fillRect (juce::Rectangle<float> (xe, wa.getY(), juce::jmax (0.0f, wa.getRight() - xe), wa.getHeight()));
 
         auto marker = [&] (float x, bool isStart)
         {
-            drawGlowLine (g, { x, wa.getY(), x, wa.getBottom() }, col::acid, 1.2f, 0.10f);
+            drawGlowLine (g, { x, wa.getY(), x, wa.getBottom() }, col::neon, 1.2f, 0.10f);
             juce::Path tri;
             if (isStart) tri.addTriangle (x, wa.getY(), x + 11.0f, wa.getY(), x, wa.getY() + 11.0f);
             else         tri.addTriangle (x, wa.getY(), x - 11.0f, wa.getY(), x, wa.getY() + 11.0f);
-            g.setColour (col::acid); g.fillPath (tri);
+            g.setColour (col::neon); g.fillPath (tri);
             g.setColour (col::text); g.setFont (Fonts::value (10.0f));
             const juce::String t = isStart ? "START" : "END";
             g.drawText (t, (int) (isStart ? x + 13.0f : x - 40.0f), (int) wa.getY() + 1, 30, 12, isStart ? juce::Justification::left : juce::Justification::right, false);
@@ -313,8 +254,8 @@ private:
         if (playhead >= 0.0f)
         {
             const float x = xFor (playhead);
-            drawGlowLine (g, { x, wa.getY(), x, wa.getBottom() - 16.0f }, col::radio, 1.4f, 0.22f);
-            g.setColour (col::radio);
+            drawGlowLine (g, { x, wa.getY(), x, wa.getBottom() - 16.0f }, col::glow, 1.4f, 0.22f);
+            g.setColour (col::glow);
             g.fillEllipse (x - 3.5f, waveCentreY - 3.5f, 7.0f, 7.0f);
         }
     }
@@ -325,7 +266,7 @@ private:
         const bool missing = status == PrysmProcessor::SampleStatus::Missing;
         auto zone = wa.reduced (28.0f, 22.0f);
         const float pulse = animate ? 0.55f + 0.45f * std::sin (time * 2.0f) : 0.8f;
-        const auto accent = missing ? col::warn : col::acid;
+        const auto accent = missing ? col::warn : col::neon;
 
         juce::Path dash; dash.addRoundedRectangle (zone, 8.0f);
         juce::Path stroked;
@@ -361,14 +302,14 @@ private:
         g.setColour (col::bg0.withAlpha (0.5f)); g.fillRoundedRectangle (wa, 5.0f);
         const auto c = wa.getCentre();
         juce::Path arc; arc.addCentredArc (c.x, c.y - 8.0f, 22.0f, 22.0f, 0.0f, time * 4.0f, time * 4.0f + 4.2f, true);
-        g.setColour (col::acid); g.strokePath (arc, juce::PathStrokeType (3.0f));
+        g.setColour (col::neon); g.strokePath (arc, juce::PathStrokeType (3.0f));
         g.setColour (col::text); g.setFont (Fonts::title (17.0f, 0.3f));
         g.drawText ("LOADING", wa.withTrimmedTop (wa.getHeight() * 0.5f + 20.0f).withHeight (24.0f).toNearestInt(), juce::Justification::centred, false);
     }
 
     void paintDropOverlay (juce::Graphics& g, juce::Rectangle<float> wa)
     {
-        const auto c = dragSupported ? col::radio : col::error;
+        const auto c = dragSupported ? col::glow : col::error;
         g.setColour (c.withAlpha (0.12f)); g.fillRoundedRectangle (wa, 5.0f);
         g.setColour (c); g.drawRoundedRectangle (wa.reduced (1.0f), 5.0f, 2.0f);
         drawBrackets (g, wa.reduced (8.0f), 18.0f, c, 2.0f);
@@ -386,6 +327,5 @@ private:
     PrysmProcessor::SampleStatus lastStatus = PrysmProcessor::SampleStatus::Empty;
     juce::String lastText;
     juce::uint32 errorShownAt = 0;
-    std::array<Particle, 64> particles;
 };
 } // namespace prysm::ui

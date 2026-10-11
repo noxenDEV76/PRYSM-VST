@@ -17,7 +17,7 @@ permissions:
 env:
   JUCE_TAG: "8.0.15"
   JUCE_COMMIT: "91ad83ae34a81e0833b1a2b0866f54846370ae53"
-  PRYSM_VERSION: "1.0.0"
+  PRYSM_VERSION: "1.1.0"
 
 jobs:
   windows:

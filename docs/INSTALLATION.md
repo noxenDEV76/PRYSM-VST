@@ -2,7 +2,7 @@
 
 ## 1. Installer avec l'installateur EXE (recommandé)
 
-1. Récupérez `PRYSM-1.0.0-Windows-x64-Setup.exe` (voir « D'où vient l'EXE ? » ci-dessous).
+1. Récupérez `PRYSM-1.1.0-Windows-x64-Setup.exe` (voir « D'où vient l'EXE ? » ci-dessous).
 2. Double-cliquez dessus. Windows demande les droits administrateur : acceptez.
    - Si SmartScreen affiche « Windows a protégé votre ordinateur » : l'installateur n'est pas signé numériquement
      (une signature de code est un certificat payant). Cliquez sur **Informations complémentaires → Exécuter quand même**.
@@ -14,11 +14,11 @@
 4. Si FL Studio (ou un autre hôte) est ouvert et utilise déjà PRYSM, l'installateur vous demande de le fermer
    puis de cliquer sur **Réessayer**.
 
-Installation silencieuse (déploiement) : `PRYSM-1.0.0-Windows-x64-Setup.exe /S`
+Installation silencieuse (déploiement) : `PRYSM-1.1.0-Windows-x64-Setup.exe /S`
 
 ## 2. Installer à la main (alternative)
 
-Décompressez `PRYSM-1.0.0-VST3-Windows-x64.zip` et copiez le dossier `PRYSM.vst3` dans
+Décompressez `PRYSM-1.1.0-VST3-Windows-x64.zip` et copiez le dossier `PRYSM.vst3` dans
 `C:\Program Files\Common Files\VST3\` (droits administrateur nécessaires).
 
 ## 3. Premier lancement dans FL Studio
@@ -52,7 +52,7 @@ Paramètres Windows → **Applications → PRYSM (VST3) → Désinstaller**
 L'EXE et le VST3 Windows sont produits par le workflow GitHub Actions `.github/workflows/build.yml`
 (runner Windows, compilateur MSVC, build Release). Voir `docs/BUILD.md` :
 poussez le dépôt sur GitHub, ouvrez l'onglet **Actions**, lancez/attendez le workflow **build**, puis téléchargez
-l'artefact `PRYSM-1.0.0-windows-x64`. L'artefact n'est publié que si la compilation, les tests, la création
+l'artefact `PRYSM-1.1.0-windows-x64`. L'artefact n'est publié que si la compilation, les tests, la création
 de l'installateur et un test d'installation/désinstallation silencieux ont tous réussi.
 
 ## 6. Dépannage

@@ -15,6 +15,7 @@ Included third-party components
 -------------------------------
 * JUCE 8.0.15 - AGPLv3 (https://juce.com)
 * Steinberg VST 3 SDK (bundled in JUCE) - MIT license
+* Orbitron font - SIL Open Font License 1.1 (The League of Moveable Type)
 * Rajdhani font - SIL Open Font License 1.1 (Indian Type Foundry)
 * Share Tech Mono font - SIL Open Font License 1.1 (Carrois Type Design)
 * Audio decoders bundled in JUCE: FLAC (BSD-3-Clause), Ogg Vorbis (BSD-3-Clause)
@@ -27,4 +28,4 @@ Licence et mentions tierces (FR)
 PRYSM est un logiciel libre distribue sous licence GNU AGPL v3 ou ulterieure,
 sans aucune garantie. Le code source complet accompagne cette version.
 Composants tiers : JUCE 8.0.15 (AGPLv3), SDK VST 3 de Steinberg (MIT),
-polices Rajdhani et Share Tech Mono (SIL OFL 1.1), decodeurs FLAC et Ogg Vorbis (BSD).
+polices Orbitron, Rajdhani et Share Tech Mono (SIL OFL 1.1), decodeurs FLAC et Ogg Vorbis (BSD).

@@ -5,6 +5,7 @@
 | JUCE | 8.0.15, commit `91ad83ae34a81e0833b1a2b0866f54846370ae53` (https://github.com/juce-framework/JUCE) | AGPLv3 (ou licence commerciale JUCE) | Framework audio / GUI / VST3 |
 | SDK VST 3 de Steinberg | embarqué dans JUCE 8.0.15 | MIT | Interface VST3 |
 | Décodeurs FLAC, Ogg Vorbis | embarqués dans JUCE | BSD-3-Clause | Formats FLAC / OGG |
+| Orbitron | Google Fonts (`ofl/orbitron`), The League of Moveable Type | SIL OFL 1.1 (`assets/fonts/OFL-Orbitron.txt`) |
 | Rajdhani SemiBold | Google Fonts (`ofl/rajdhani`), Indian Type Foundry | SIL OFL 1.1 (`assets/fonts/OFL-Rajdhani.txt`) | Titres, libellés |
 | Share Tech Mono Regular | Google Fonts (`ofl/sharetechmono`), Carrois Type Design | SIL OFL 1.1 (`assets/fonts/OFL-ShareTechMono.txt`) | Valeurs numériques |
 | CMake | ≥ 3.22 | BSD-3-Clause | Build |

@@ -53,7 +53,7 @@ public:
     void pushUiNote (int note, float velocity, bool on);
 
     // ---- UI persistence ----
-    std::atomic<int>  uiWidth { 1120 }, uiHeight { 700 };
+    std::atomic<int>  uiWidth { 1000 }, uiHeight { 660 };
     std::atomic<bool> reduceMotion { false };
 
     juce::AudioProcessorValueTreeState apvts;
@@ -88,8 +88,7 @@ private:
     struct Raw
     {
         std::atomic<float> *gain, *pan, *root, *tune, *pitchRange, *transpose, *mode, *reverse, *start, *end, *velSens, *voices,
-            *attack, *decay, *sustain, *release, *filterType, *cutoff, *resonance, *drive, *width, *motion, *motionRate,
-            *motionDest, *random, *randomSeed, *reverbMix, *reverbSize, *tail;
+            *delay, *attack, *hold, *decay, *sustain, *release, *tensionA, *tensionD, *tensionR;
     } raw {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PrysmProcessor)

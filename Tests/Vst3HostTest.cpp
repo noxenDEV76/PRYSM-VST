@@ -34,8 +34,8 @@ int main (int argc, char** argv)
     {
         int prysmParams = 0, midiCc = 0;
         const char* expected[] = { "Volume", "Pan", "Root Note", "Tune", "Pitch Range", "Transpose", "Playback Mode", "Reverse", "Start", "End",
-                                   "Attack", "Decay", "Sustain", "Release", "Filter Cutoff", "Filter Resonance", "Drive", "Stereo Width",
-                                   "Motion Amount", "Random Amount", "Reverb Mix", "Reverb Size", "Tail", "Voices" };
+                                   "Velocity Sensitivity", "Voices", "Delay", "Attack", "Hold", "Decay", "Sustain", "Release",
+                                   "Attack Tension", "Decay Tension", "Release Tension" };
         for (auto* prm : inst->getParameters())
         {
             auto n = prm->getName (64);

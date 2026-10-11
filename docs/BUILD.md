@@ -18,9 +18,9 @@ Sortie : `build/PRYSM_artefacts/Release/VST3/PRYSM.vst3`.
 ## 3. Reconstruire l'installateur
 Installer NSIS 3, puis :
 ```powershell
-.\scripts\build-installer.ps1 -Vst3Dir build/PRYSM_artefacts/Release/VST3/PRYSM.vst3 -OutDir dist -Version 1.0.0
+.\scripts\build-installer.ps1 -Vst3Dir build/PRYSM_artefacts/Release/VST3/PRYSM.vst3 -OutDir dist -Version 1.1.0
 ```
-(Linux/Wine : `scripts/build-installer.sh`.) Sortie : `dist/PRYSM-1.0.0-Windows-x64-Setup.exe`.
+(Linux/Wine : `scripts/build-installer.sh`.) Sortie : `dist/PRYSM-1.1.0-Windows-x64-Setup.exe`.
 
 ## 4. Linux (développement et tests)
 ```bash

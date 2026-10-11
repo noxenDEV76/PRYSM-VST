@@ -5,7 +5,7 @@
 set -euo pipefail
 VST3_DIR="$(cd "${1:?usage: build-installer.sh <PRYSM.vst3 dir> [out dir] [version]}" && pwd)"
 OUT_DIR="$(mkdir -p "${2:-dist}" && cd "${2:-dist}" && pwd)"
-VERSION="${3:-1.0.0}"
+VERSION="${3:-1.1.0}"
 cd "$(dirname "$0")/.."
 command -v makensis >/dev/null || { echo "makensis not found (install NSIS 3)"; exit 1; }
 [ -f "$VST3_DIR/Contents/x86_64-win/PRYSM.vst3" ] || { echo "Not a Windows bundle: $VST3_DIR/Contents/x86_64-win/PRYSM.vst3 is missing"; exit 1; }

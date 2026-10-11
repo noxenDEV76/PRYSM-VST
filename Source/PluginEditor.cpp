@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "UI/SampleCore.h"
+#include "UI/Atmosphere.h"
 
 using namespace prysm;
 using namespace prysm::ui;
@@ -26,26 +27,25 @@ public:
             gear.addArc (c.x - r, c.y - r, r * 2, r * 2, a0, a1, i == 0);
         }
         gear.closeSubPath();
-        g.setColour (over || down ? col::acid : col::grey);
+        g.setColour (over || down ? col::neon : col::grey);
         g.strokePath (gear, juce::PathStrokeType (1.5f));
         g.drawEllipse (c.x - R * 0.28f, c.y - R * 0.28f, R * 0.56f, R * 0.56f, 1.5f);
     }
 };
 
 //==============================================================================
+/** ROOT NOTE / FINE TUNE / playback mode / reverse: the only "tweak" controls, kept deliberately few. */
 class PitchPanel : public Panel
 {
 public:
     explicit PitchPanel (PrysmProcessor& p)
-        : Panel ("PITCH ENGINE"), proc (p),
-          root (p.apvts, ids::root, "ROOT NOTE", "Key that plays the sample at its original pitch (MIDI 60 = C5)"),
-          tune (p.apvts, ids::tune, "TUNE", "Fine tuning in cents (100 cents = 1 semitone)", true),
-          range (p.apvts, ids::pitchRange, "PITCH RANGE", "Pitch wheel range in semitones"),
-          transpose (p.apvts, ids::transpose, "TRANSPOSE", "Shift every note by whole semitones", true),
+        : Panel ("PITCH"),
+          root (p.apvts, ids::root, "ROOT NOTE", "Key that plays the sample at its original pitch (C5 = MIDI 60, FL Studio convention)"),
+          tune (p.apvts, ids::tune, "FINE TUNE", "Fine tuning in cents (100 cents = 1 semitone)", true),
           mode (p.apvts, ids::mode, { "ONE-SHOT", "GATE" }, 2, "ONE-SHOT: plays to the end of the sample, note-off ignored.  GATE: stops when the key is released."),
           reverseAttach (p.apvts, ids::reverse, reverse)
     {
-        for (auto* k : { &root, &tune, &range, &transpose }) addAndMakeVisible (*k);
+        for (auto* k : { &root, &tune }) addAndMakeVisible (*k);
         addAndMakeVisible (mode);
         reverse.setButtonText ("REVERSE");
         reverse.setTooltip ("Play the sample backwards");
@@ -54,169 +54,67 @@ public:
     void resized() override
     {
         auto a = contentArea();
-        auto row = a.removeFromTop (102);
-        const int w = row.getWidth() / 4;
-        for (auto* k : { &root, &tune, &range, &transpose }) k->setBounds (row.removeFromLeft (w).reduced (3, 0));
+        auto row = a.removeFromTop (104);
+        const int w = row.getWidth() / 2;
+        root.setBounds (row.removeFromLeft (w).reduced (6, 0));
+        tune.setBounds (row.reduced (6, 0));
+        a.removeFromTop (4);
+        mode.setBounds (a.removeFromTop (34).reduced (4, 0));
         a.removeFromTop (6);
-        auto r2 = a.removeFromTop (34);
-        mode.setBounds (r2.removeFromLeft (196).reduced (3, 0));
-        r2.removeFromLeft (8);
-        reverse.setBounds (r2.removeFromLeft (132));
-        modeLabelY = mode.getBottom() + 3;
+        reverse.setBounds (a.removeFromTop (34).reduced (4, 0));
     }
-    void paint (juce::Graphics& g) override
-    {
-        paintFrame (g);
-        const int rootNote = (int) proc.apvts.getRawParameterValue (ids::root)->load();
-        const int bend = (int) proc.apvts.getRawParameterValue (ids::pitchRange)->load();
-        g.setFont (Fonts::title (13.0f, 0.2f));
-        g.setColour (col::grey);
-        g.drawText ("PLAYBACK MODE", mode.getX(), modeLabelY, 196, 14, juce::Justification::centred, false);
-        auto info = getLocalBounds().withTrimmedTop (modeLabelY + 28).reduced (14, 0).withHeight (46);
-        g.setColour (col::edge); g.drawHorizontalLine (info.getY(), 14.0f, (float) getWidth() - 14.0f);
-        g.setFont (Fonts::value (12.5f));
-        g.setColour (col::grey);
-        g.drawText ("UNITY KEY", info.getX(), info.getY() + 6, 100, 16, juce::Justification::left, false);
-        g.setColour (col::acid);
-        g.drawText (noteName (rootNote) + "  (MIDI " + juce::String (rootNote) + ")", info.getX() + 100, info.getY() + 6, 200, 16, juce::Justification::left, false);
-        g.setColour (col::grey);
-        g.drawText ("PITCH WHEEL", info.getX(), info.getY() + 24, 100, 16, juce::Justification::left, false);
-        g.setColour (col::text);
-        g.drawText ("+/- " + juce::String (bend) + " semitones", info.getX() + 100, info.getY() + 24, 200, 16, juce::Justification::left, false);
-    }
-    void tick() { const int r = (int) proc.apvts.getRawParameterValue (ids::root)->load(); const int b = (int) proc.apvts.getRawParameterValue (ids::pitchRange)->load(); if (r != lastRoot || b != lastBend) { lastRoot = r; lastBend = b; repaint(); } }
 
 private:
-    PrysmProcessor& proc;
-    ParamKnob root, tune, range, transpose;
+    ParamKnob root, tune;
     ChoiceSelector mode;
     juce::ToggleButton reverse;
     juce::AudioProcessorValueTreeState::ButtonAttachment reverseAttach;
-    int modeLabelY = 0, lastRoot = -1, lastBend = -1;
 };
 
 //==============================================================================
+/** Envelope Lab, laid out like FL Studio's: graph on top, DELAY ATT HOLD DEC SUS REL, then the three TENSION knobs. */
 class EnvelopePanel : public Panel
 {
 public:
     explicit EnvelopePanel (PrysmProcessor& p)
         : Panel ("ENVELOPE LAB"), graph (p.apvts),
-          a (p.apvts, ids::attack, "ATTACK", "Time to reach full level"),
-          d (p.apvts, ids::decay, "DECAY", "Time to fall to the sustain level"),
-          s (p.apvts, ids::sustain, "SUSTAIN", "Level held while the sample plays"),
-          r (p.apvts, ids::release, "RELEASE", "Fade-out time after note-off (GATE mode)")
+          del (p.apvts, ids::delay, "DELAY", "Silence before the sound starts"),
+          a (p.apvts, ids::attack, "ATT", "Attack: time to reach full level"),
+          h (p.apvts, ids::hold, "HOLD", "Time spent at full level before the decay"),
+          d (p.apvts, ids::decay, "DEC", "Decay: time to fall to the sustain level"),
+          s (p.apvts, ids::sustain, "SUS", "Sustain: level held while the key is down"),
+          r (p.apvts, ids::release, "REL", "Release: fade-out after the key is released (GATE mode)"),
+          ta (p.apvts, ids::tensionA, "ATT", "Attack curve. Left = fast start, right = slow start", true),
+          td (p.apvts, ids::tensionD, "DEC", "Decay curve", true),
+          tr (p.apvts, ids::tensionR, "REL", "Release curve", true)
     {
         addAndMakeVisible (graph);
-        for (auto* k : { &a, &d, &s, &r }) { k->setCompact (true); addAndMakeVisible (*k); }
+        for (auto* k : { &del, &a, &h, &d, &s, &r, &ta, &td, &tr }) { k->setCompact (true); addAndMakeVisible (*k); }
     }
     void resized() override
     {
         auto c = contentArea();
-        graph.setBounds (c.removeFromTop (104).reduced (2, 0));
-        c.removeFromTop (4);
-        const int w = c.getWidth() / 4;
-        for (auto* k : { &a, &d, &s, &r }) k->setBounds (c.removeFromLeft (w));
+        graph.setBounds (c.removeFromTop (118).reduced (2, 0));
+        c.removeFromTop (14);
+        const int w = c.getWidth() / 9;
+        knobsY = c.getY();
+        for (auto* k : { &del, &a, &h, &d, &s, &r }) k->setBounds (c.removeFromLeft (w));
+        tensionX = c.getX();
+        for (auto* k : { &ta, &td, &tr }) k->setBounds (c.removeFromLeft (w));
+        tensionW = w * 3;
+    }
+    void paint (juce::Graphics& g) override
+    {
+        paintFrame (g);
+        g.setColour (col::greyDim); g.setFont (Fonts::title (11.5f, 0.3f));
+        g.drawText ("TENSION", tensionX, knobsY - 14, tensionW, 12, juce::Justification::centred, false);
+        g.setColour (col::edge); g.drawVerticalLine (tensionX - 2, (float) knobsY - 12.0f, (float) getHeight() - 12.0f);
     }
     void tick() { graph.tick(); }
 private:
     EnvelopeGraph graph;
-    ParamKnob a, d, s, r;
-};
-
-//==============================================================================
-class MutationPanel : public Panel
-{
-public:
-    explicit MutationPanel (PrysmProcessor& p)
-        : Panel ("MUTATION ENGINE"), scope (p.apvts),
-          filterType (p.apvts, ids::filterType, { "OFF", "LP", "HP" }, 1, "Filter mode: off, low-pass or high-pass"),
-          cutoff (p.apvts, ids::cutoff, "CUTOFF", "Filter cutoff frequency"),
-          res (p.apvts, ids::resonance, "RESONANCE", "Filter resonance"),
-          drive (p.apvts, ids::drive, "DRIVE", "Saturation with level compensation (2x oversampled)"),
-          width (p.apvts, ids::width, "WIDTH", "Stereo width. 0% = mono. The mono sum is never altered.", false),
-          revMix (p.apvts, ids::reverbMix, "MIX", "Reverb level"),
-          revSize (p.apvts, ids::reverbSize, "SIZE", "Reverb decay length"),
-          tail (p.apvts, ids::tail, "TAIL", "Fade-out applied to the end of the sample region (separate from RELEASE and the reverb)"),
-          motion (p.apvts, ids::motion, "AMOUNT", "Depth of the per-note LFO"),
-          motionRate (p.apvts, ids::motionRate, "RATE", "LFO speed"),
-          motionDest (p.apvts, ids::motionDest, { "FILTER", "PITCH", "AMP", "PAN" }, 2, "What the LFO modulates (FILTER needs the filter enabled)"),
-          rnd (p.apvts, ids::random, "AMOUNT", "Subtle per-note variation of pitch, filter, pan and level"),
-          seed (p.apvts, ids::randomSeed, "SEED", "Same seed = same variation sequence every time")
-    {
-        for (auto* k : { &cutoff, &res, &drive, &width, &revMix, &revSize, &tail, &motion, &motionRate, &rnd, &seed }) addAndMakeVisible (*k);
-        addAndMakeVisible (filterType); addAndMakeVisible (motionDest); addAndMakeVisible (scope);
-    }
-
-    void resized() override
-    {
-        auto c = contentArea();
-        const int cw = c.getWidth() / 8;
-        const int rowH = c.getHeight() / 2;
-        row1 = c.removeFromTop (rowH);
-        row2 = c;
-        auto cell = [&] (juce::Rectangle<int> row, int col, int span = 1) { return juce::Rectangle<int> (row.getX() + col * cw, row.getY() + 14, cw * span, row.getHeight() - 14).reduced (3, 0); };
-
-        filterType.setBounds (cell (row1, 0).withTrimmedTop (2).withHeight (60));
-        cutoff.setBounds (cell (row1, 1)); res.setBounds (cell (row1, 2)); drive.setBounds (cell (row1, 3)); width.setBounds (cell (row1, 4));
-        revMix.setBounds (cell (row1, 5)); revSize.setBounds (cell (row1, 6)); tail.setBounds (cell (row1, 7));
-
-        motion.setBounds (cell (row2, 0)); motionRate.setBounds (cell (row2, 1));
-        motionDest.setBounds (cell (row2, 2, 2).withTrimmedTop (2).withHeight (60).reduced (6, 0));
-        rnd.setBounds (cell (row2, 4)); seed.setBounds (cell (row2, 5));
-        scope.setBounds (cell (row2, 6, 2).withTrimmedBottom (14).reduced (6, 2));
-        cw_ = cw;
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        paintFrame (g);
-        auto caption = [&] (juce::Rectangle<int> row, int c0, int span, const juce::String& t)
-        {
-            auto r = juce::Rectangle<int> (row.getX() + c0 * cw_ + 4, row.getY() + 1, span * cw_ - 8, 12);
-            g.setColour (col::greyDim); g.setFont (Fonts::title (12.0f, 0.3f));
-            g.drawText (t, r, juce::Justification::left, false);
-            g.setColour (col::edge); g.drawHorizontalLine (r.getBottom() + 1, (float) r.getX(), (float) r.getRight());
-        };
-        caption (row1, 0, 3, "FILTER"); caption (row1, 3, 1, "DRIVE"); caption (row1, 4, 1, "STEREO"); caption (row1, 5, 3, "SPACE  +  TAIL");
-        caption (row2, 0, 4, "MOTION"); caption (row2, 4, 2, "RANDOM"); caption (row2, 6, 2, "LFO PREVIEW");
-        g.setColour (col::grey); g.setFont (Fonts::title (12.5f, 0.2f));
-        g.drawText ("TYPE", filterType.getX(), filterType.getBottom() + 3, filterType.getWidth(), 14, juce::Justification::centred, false);
-        g.drawText ("TARGET", motionDest.getX(), motionDest.getBottom() + 3, motionDest.getWidth(), 14, juce::Justification::centred, false);
-    }
-    void tick (float dt, bool animate) { scope.tick (dt, animate); }
-
-private:
-    LfoScope scope;
-    ChoiceSelector filterType;
-    ParamKnob cutoff, res, drive, width, revMix, revSize, tail, motion, motionRate;
-    ChoiceSelector motionDest;
-    ParamKnob rnd, seed;
-    juce::Rectangle<int> row1, row2;
-    int cw_ = 76;
-};
-
-//==============================================================================
-class OutputPanel : public Panel
-{
-public:
-    explicit OutputPanel (PrysmProcessor& p)
-        : Panel ("OUTPUT"),
-          vol (p.apvts, ids::gain, "VOLUME", "Master volume"),
-          pan (p.apvts, ids::pan, "PAN", "Master pan", true),
-          vel (p.apvts, ids::velSens, "VELOCITY", "How strongly note velocity changes the level"),
-          voices (p.apvts, ids::voices, "VOICES", "Maximum polyphony. The oldest note fades out when the limit is reached.")
-    {
-        for (auto* k : { &vol, &pan, &vel, &voices }) { k->setCompact (true); addAndMakeVisible (*k); }
-    }
-    void resized() override
-    {
-        auto c = contentArea().reduced (0, 2);
-        const int w = c.getWidth() / 2, h = c.getHeight() / 2;
-        vol.setBounds (c.getX(), c.getY(), w, h);           pan.setBounds (c.getX() + w, c.getY(), w, h);
-        vel.setBounds (c.getX(), c.getY() + h, w, h);       voices.setBounds (c.getX() + w, c.getY() + h, w, h);
-    }
-private:
-    ParamKnob vol, pan, vel, voices;
+    ParamKnob del, a, h, d, s, r, ta, td, tr;
+    int knobsY = 0, tensionX = 0, tensionW = 0;
 };
 } // namespace
 
@@ -225,134 +123,65 @@ class PrysmEditor::Impl : public juce::Component
 {
 public:
     explicit Impl (PrysmProcessor& p, PrysmEditor& o)
-        : proc (p), owner (o), tooltip (this, 450),
-          core (p), pitch (p), env (p), mutation (p), output (p), monitor (p), keys (p)
+        : proc (p), owner (o), tooltip (this, 450), core (p), pitch (p), env (p), keys (p)
     {
         setLookAndFeel (&laf);
-        for (auto* c : std::initializer_list<juce::Component*> { &core, &pitch, &env, &mutation, &output, &monitor, &keys, &gear })
+        addAndMakeVisible (atmosphere);
+        for (auto* c : std::initializer_list<juce::Component*> { &core, &pitch, &env, &keys, &gear })
             addAndMakeVisible (*c);
+        pitch.setBufferedToImage (true);
+        env.setBufferedToImage (true);
         gear.onClick = [this] { showSettings(); };
         core.onLoadClicked = [this] { browse(); };
-        core.setAnimationsEnabled (! proc.reduceMotion.load());
+        setAnimations (! proc.reduceMotion.load());
         updateState();
     }
     ~Impl() override { setLookAndFeel (nullptr); }
 
     void resized() override
     {
-        core.setBounds (16, 64, 700, 272);
-        pitch.setBounds (728, 64, 376, 272);
-        env.setBounds (16, 346, 296, 228);
-        mutation.setBounds (324, 346, 632, 228);
-        output.setBounds (968, 346, 136, 228);
-        monitor.setBounds (16, 582, 1088, 28);
-        keys.setBounds (16, 618, 1088, 70);
-        gear.setBounds (1072, 14, 28, 28);
+        atmosphere.setBounds (getLocalBounds());
+        core.setBounds (24, 64, 952, 236);
+        env.setBounds (24, 312, 628, 250);
+        pitch.setBounds (664, 312, 312, 250);
+        keys.setBounds (24, 574, 952, 66);
+        gear.setBounds (944, 16, 28, 28);
     }
 
-    void paint (juce::Graphics& g) override
+    void paintOverChildren (juce::Graphics& g) override
     {
-        g.fillAll (col::bg0);
-        // atmosphere: faint lab grid + header glow
-        g.setColour (col::acid.withAlpha (0.025f));
-        for (int x = 0; x < kDesignW; x += 28) g.drawVerticalLine (x, 0.0f, (float) kDesignH);
-        for (int y = 0; y < kDesignH; y += 28) g.drawHorizontalLine (y, 0.0f, (float) kDesignW);
-        g.setGradientFill (juce::ColourGradient (col::radio.withAlpha (0.10f), 60.0f, 0.0f, juce::Colours::transparentBlack, 520.0f, 90.0f, true));
-        g.fillRect (0, 0, kDesignW, 120);
-        g.setGradientFill (juce::ColourGradient (col::bg0.withAlpha (0.0f), 0.0f, 0.0f, col::bg0.withAlpha (0.6f), 0.0f, (float) kDesignH, false));
-        g.fillRect (getLocalBounds());
-
-        // ---- header
-        drawLogo (g, { 22.0f, 6.0f, 44.0f, 44.0f });
+        // Title only: no logo, no tagline.
+        const juce::String title = "PRYSM";
+        g.setFont (Fonts::headline (30.0f, 0.34f));
+        const juce::Rectangle<int> r (28, 10, 320, 44);
+        g.setColour (col::neon.withAlpha (0.20f));
+        g.drawText (title, r.translated (0, 0).expanded (1), juce::Justification::centredLeft, false);
         g.setColour (col::text);
-        g.setFont (Fonts::title (36.0f, 0.34f));
-        g.drawText ("PRYSM", 82, 2, 220, 38, juce::Justification::centredLeft, false);
-        g.setColour (col::grey);
-        g.setFont (Fonts::title (11.0f, 0.5f));
-        g.drawText ("ALIEN SAMPLE LAB", 84, 37, 220, 14, juce::Justification::centredLeft, false);
-        g.setColour (col::edge);
-        g.drawHorizontalLine (55, 16.0f, (float) kDesignW - 16.0f);
-
-        // engine state
-        const float blink = (status == PrysmProcessor::SampleStatus::Loading) ? (0.5f + 0.5f * std::sin ((float) juce::Time::getMillisecondCounter() * 0.012f)) : 1.0f;
-        auto led = juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ 322.0f, 28.0f });
-        g.setColour (stateColour.withAlpha (0.18f * blink)); g.fillEllipse (led.expanded (5.0f));
-        g.setColour (stateColour.withAlpha (blink)); g.fillEllipse (led);
-        g.setColour (col::text); g.setFont (Fonts::title (15.0f, 0.22f));
-        g.drawText (stateText, 336, 17, 190, 22, juce::Justification::centredLeft, false);
-
-        // current sample
-        g.setColour (col::greyDim); g.setFont (Fonts::title (11.0f, 0.4f));
-        g.drawText ("SAMPLE", 560, 13, 80, 12, juce::Justification::left, false);
-        g.setColour (col::text); g.setFont (Fonts::title (17.0f, 0.06f));
-        g.drawText (sampleName, 560, 25, 330, 22, juce::Justification::left, true);
-
-        // discreet audio activity
-        for (int i = 0; i < 5; ++i)
-        {
-            const float h = 4.0f + 24.0f * bars[(size_t) i];
-            auto b = juce::Rectangle<float> (4.0f, h).withCentre ({ 1008.0f + (float) i * 8.0f, 28.0f });
-            g.setColour (col::acid.withAlpha (0.25f + 0.75f * bars[(size_t) i]));
-            g.fillRoundedRectangle (b, 1.5f);
-        }
+        g.drawText (title, r, juce::Justification::centredLeft, false);
     }
 
     //==========================================================================
     void tick (float dt)
     {
-        const bool animate = ! proc.reduceMotion.load();
         updateState();
+        atmosphere.tick (dt, proc.engine.monitor.activity.load() * 1.4f);
         core.tick (dt);
         env.tick();
-        pitch.tick();
-        mutation.tick (dt, animate);
-        monitor.tick();
         keys.tick();
-
-        // activity bars
-        const float act = juce::jlimit (0.0f, 1.0f, proc.engine.monitor.activity.load() * 1.4f);
-        static const float shape[5] = { 0.55f, 0.9f, 1.0f, 0.75f, 0.45f };
-        bool dirty = false;
-        for (int i = 0; i < 5; ++i)
-        {
-            const float wobble = animate ? 0.75f + 0.25f * std::sin ((float) juce::Time::getMillisecondCounter() * 0.01f * (1.0f + 0.4f * (float) i) + (float) i) : 1.0f;
-            const float target = act * shape[(size_t) i] * wobble;
-            const float nv = bars[(size_t) i] + (target - bars[(size_t) i]) * 0.5f;
-            if (std::abs (nv - bars[(size_t) i]) > 0.01f) dirty = true;
-            bars[(size_t) i] = nv;
-        }
-        if (dirty || status == PrysmProcessor::SampleStatus::Loading) repaint (540, 0, kDesignW - 540, 56);
     }
 
     void updateState()
     {
         const auto s = proc.getStatus();
-        const auto sample = proc.getUiSample();
-        const int voices = proc.engine.monitor.activeVoices.load();
-        juce::String text; juce::Colour c;
-        switch (s)
-        {
-            case PrysmProcessor::SampleStatus::Loading: text = "LOADING SAMPLE"; c = col::warn; break;
-            case PrysmProcessor::SampleStatus::Missing: text = "SAMPLE MISSING"; c = col::warn; break;
-            case PrysmProcessor::SampleStatus::Error:   text = "LOAD ERROR";     c = col::error; break;
-            case PrysmProcessor::SampleStatus::Loaded:  text = voices > 0 ? "ENGINE ACTIVE" : "ENGINE READY"; c = voices > 0 ? col::radio : col::acid; break;
-            default:                                    text = "ENGINE IDLE";    c = col::greyDim; break;
-        }
-        const juce::String name = sample ? sample->name
-                                         : (s == PrysmProcessor::SampleStatus::Missing ? proc.getMissingFileName() : juce::String ("NO SAMPLE"));
-        if (text != stateText || c != stateColour || name != sampleName || s != status)
-        {
-            stateText = text; stateColour = c; sampleName = name; status = s;
-            repaint (0, 0, kDesignW, 56);
-        }
-        const bool controlsActive = sample != nullptr || s == PrysmProcessor::SampleStatus::Missing;
-        for (auto* p : std::initializer_list<Panel*> { &pitch, &env, &mutation, &output }) p->setDormant (! controlsActive);
+        const bool controlsActive = proc.getUiSample() != nullptr || s == PrysmProcessor::SampleStatus::Missing;
+        for (auto* p : std::initializer_list<Panel*> { &pitch, &env }) p->setDormant (! controlsActive);
     }
 
     void setAnimations (bool on)
     {
         proc.reduceMotion = ! on;
         core.setAnimationsEnabled (on);
+        atmosphere.setAnimated (on);
     }
 
     void browse()
@@ -385,11 +214,11 @@ public:
                              if (r == 2) proc.clearSample();
                              if (r == 3) owner.setSize (kDesignW, kDesignH);
                              if (r == 4)
-                                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon, "PRYSM  1.0.0",
-                                     "Alien sample instrument (VST3).\n\n"
-                                     "Drop a one-shot, play it chromatically, mutate it.\n\n"
+                                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon, "PRYSM  1.1.0",
+                                     "Simple sample instrument (VST3).\n\n"
+                                     "Drop a sample, shape it with the envelope, play it from your piano roll.\n\n"
                                      "Built with JUCE (AGPLv3).\n"
-                                     "Fonts: Rajdhani and Share Tech Mono (SIL Open Font License).",
+                                     "Fonts: Orbitron, Rajdhani and Share Tech Mono (SIL Open Font License).",
                                      "CLOSE", this);
                          });
     }
@@ -400,20 +229,13 @@ public:
     PrysmEditor& owner;
     PrysmLookAndFeel laf;
     juce::TooltipWindow tooltip;
+    Atmosphere atmosphere;
     SampleCore core;
     PitchPanel pitch;
     EnvelopePanel env;
-    MutationPanel mutation;
-    OutputPanel output;
-    VoiceMonitor monitor;
     KeyboardStrip keys;
     GearButton gear;
     std::unique_ptr<juce::FileChooser> chooser;
-
-    PrysmProcessor::SampleStatus status = PrysmProcessor::SampleStatus::Empty;
-    juce::String stateText = "ENGINE IDLE", sampleName = "NO SAMPLE";
-    juce::Colour stateColour = col::greyDim;
-    std::array<float, 5> bars {};
 };
 
 //==============================================================================

@@ -11,10 +11,8 @@ PrysmProcessor::PrysmProcessor()
 
     auto p = [this] (const char* id) { return apvts.getRawParameterValue (id); };
     raw = { p (ids::gain), p (ids::pan), p (ids::root), p (ids::tune), p (ids::pitchRange), p (ids::transpose), p (ids::mode),
-            p (ids::reverse), p (ids::start), p (ids::end), p (ids::velSens), p (ids::voices), p (ids::attack), p (ids::decay),
-            p (ids::sustain), p (ids::release), p (ids::filterType), p (ids::cutoff), p (ids::resonance), p (ids::drive),
-            p (ids::width), p (ids::motion), p (ids::motionRate), p (ids::motionDest), p (ids::random), p (ids::randomSeed),
-            p (ids::reverbMix), p (ids::reverbSize), p (ids::tail) };
+            p (ids::reverse), p (ids::start), p (ids::end), p (ids::velSens), p (ids::voices), p (ids::delay), p (ids::attack),
+            p (ids::hold), p (ids::decay), p (ids::sustain), p (ids::release), p (ids::tensionA), p (ids::tensionD), p (ids::tensionR) };
     engine.setParams (readParams());
     engine.prepare (44100.0);
 }
@@ -34,7 +32,7 @@ void PrysmProcessor::prepareToPlay (double sampleRate, int)
 {
     engine.setParams (readParams());
     engine.prepare (sampleRate);
-    setLatencySamples (juce::roundToInt (engine.getLatencySamples()));
+    setLatencySamples (0);
     // The engine keeps its current sample across prepare(); only voices are reset.
 }
 
@@ -48,14 +46,9 @@ EngineParams PrysmProcessor::readParams() const
     e.reverse = raw.reverse->load() > 0.5f;
     e.start = raw.start->load();  e.end = raw.end->load();  e.velSens = raw.velSens->load();
     e.voices = (int) raw.voices->load();
-    e.attack = raw.attack->load();  e.decay = raw.decay->load();  e.sustain = raw.sustain->load();  e.release = raw.release->load();
-    e.filterMode = (FilterMode) juce::jlimit (0, 2, (int) raw.filterType->load());
-    e.cutoff = raw.cutoff->load();  e.resonance = raw.resonance->load();
-    e.drive = raw.drive->load();  e.width = raw.width->load();
-    e.motion = raw.motion->load();  e.motionRate = raw.motionRate->load();
-    e.motionDest = (MotionDest) juce::jlimit (0, 3, (int) raw.motionDest->load());
-    e.random = raw.random->load();  e.randomSeed = (int) raw.randomSeed->load();
-    e.reverbMix = raw.reverbMix->load();  e.reverbSize = raw.reverbSize->load();  e.tailMs = raw.tail->load();
+    e.env.delay = raw.delay->load();  e.env.attack = raw.attack->load();  e.env.hold = raw.hold->load();
+    e.env.decay = raw.decay->load();  e.env.sustain = raw.sustain->load();  e.env.release = raw.release->load();
+    e.env.tensionA = raw.tensionA->load();  e.env.tensionD = raw.tensionD->load();  e.env.tensionR = raw.tensionR->load();
     return e;
 }
 
@@ -96,9 +89,7 @@ void PrysmProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
 
 double PrysmProcessor::getTailLengthSeconds() const
 {
-    const float mix = raw.reverbMix != nullptr ? raw.reverbMix->load() : 0.0f;
-    const float size = raw.reverbSize != nullptr ? raw.reverbSize->load() : 0.0f;
-    return mix > 0.001f ? 1.5 + 8.0 * size : 0.0;
+    return raw.release != nullptr ? (double) raw.release->load() : 0.0;
 }
 
 void PrysmProcessor::pushUiNote (int note, float velocity, bool on)
@@ -262,8 +253,8 @@ void PrysmProcessor::setStateInformation (const void* data, int size)
     if (! tree.isValid()) return;
 
     const juce::String path = tree.getProperty ("samplePath", "").toString();
-    uiWidth  = juce::jlimit (560, 2800, (int) tree.getProperty ("uiWidth", 1120));
-    uiHeight = juce::jlimit (350, 1750, (int) tree.getProperty ("uiHeight", 700));
+    uiWidth  = juce::jlimit (560, 2800, (int) tree.getProperty ("uiWidth", 1000));
+    uiHeight = juce::jlimit (350, 1750, (int) tree.getProperty ("uiHeight", 660));
     reduceMotion = (bool) tree.getProperty ("reduceMotion", false);
     apvts.replaceState (tree);
 

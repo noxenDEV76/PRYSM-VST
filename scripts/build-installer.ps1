@@ -1,12 +1,12 @@
 <#
  Rebuilds the Windows installer (EXE) from an already built PRYSM.vst3 bundle.
- Usage:  .\scripts\build-installer.ps1 [-Vst3Dir build\PRYSM_artefacts\Release\VST3\PRYSM.vst3] [-OutDir dist] [-Version 1.0.0]
+ Usage:  .\scripts\build-installer.ps1 [-Vst3Dir build\PRYSM_artefacts\Release\VST3\PRYSM.vst3] [-OutDir dist] [-Version 1.1.0]
  Requires NSIS 3 (makensis.exe in PATH or in "C:\Program Files (x86)\NSIS").
 #>
 param(
     [string]$Vst3Dir = "build\PRYSM_artefacts\Release\VST3\PRYSM.vst3",
     [string]$OutDir  = "dist",
-    [string]$Version = "1.0.0"
+    [string]$Version = "1.1.0"
 )
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")

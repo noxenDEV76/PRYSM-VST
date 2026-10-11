@@ -19,29 +19,18 @@ namespace ids
     inline constexpr const char* velSens    = "velSens";
     inline constexpr const char* voices     = "voices";
     // Envelope
+    inline constexpr const char* delay      = "delay";
     inline constexpr const char* attack     = "attack";
+    inline constexpr const char* hold       = "hold";
     inline constexpr const char* decay      = "decay";
     inline constexpr const char* sustain    = "sustain";
     inline constexpr const char* release    = "release";
-    // Mutation
-    inline constexpr const char* filterType = "filterType";
-    inline constexpr const char* cutoff     = "cutoff";
-    inline constexpr const char* resonance  = "resonance";
-    inline constexpr const char* drive      = "drive";
-    inline constexpr const char* width      = "width";
-    inline constexpr const char* motion     = "motion";
-    inline constexpr const char* motionRate = "motionRate";
-    inline constexpr const char* motionDest = "motionDest";
-    inline constexpr const char* random     = "random";
-    inline constexpr const char* randomSeed = "randomSeed";
-    inline constexpr const char* reverbMix  = "reverbMix";
-    inline constexpr const char* reverbSize = "reverbSize";
-    inline constexpr const char* tail       = "tail";
+    inline constexpr const char* tensionA   = "tensionA";
+    inline constexpr const char* tensionD   = "tensionD";
+    inline constexpr const char* tensionR   = "tensionR";
 }
 
 enum class PlayMode   { OneShot = 0, Gate = 1 };
-enum class FilterMode { Off = 0, LowPass = 1, HighPass = 2 };
-enum class MotionDest { Filter = 0, Pitch = 1, Amp = 2, Pan = 3 };
 
 /** MIDI note name using the FL Studio convention (MIDI 60 = C5). */
 inline juce::String noteName (int midi)
@@ -92,26 +81,20 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout
                                 Attr().withStringFromValueFunction (pct)));
     l.add (std::make_unique<PI> (ParameterID { ids::voices, v }, "Voices", 1, 16, 8));
 
+    auto tension = [&] (const char* id, const char* name)
+    {
+        return std::make_unique<P> (ParameterID { id, v }, name, NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f,
+                                    Attr().withStringFromValueFunction ([] (float x, int) { return String (roundToInt (x * 100.0f)); }));
+    };
+    l.add (std::make_unique<P> (ParameterID { ids::delay, v }, "Delay", secs (0.0f, 4.0f, 0.3f), 0.0f, Attr().withStringFromValueFunction (secsText)));
     l.add (std::make_unique<P> (ParameterID { ids::attack, v }, "Attack", secs (0.001f, 5.0f, 0.15f), 0.001f, Attr().withStringFromValueFunction (secsText)));
+    l.add (std::make_unique<P> (ParameterID { ids::hold, v }, "Hold", secs (0.0f, 4.0f, 0.3f), 0.0f, Attr().withStringFromValueFunction (secsText)));
     l.add (std::make_unique<P> (ParameterID { ids::decay, v }, "Decay", secs (0.001f, 5.0f, 0.4f), 0.4f, Attr().withStringFromValueFunction (secsText)));
     l.add (std::make_unique<P> (ParameterID { ids::sustain, v }, "Sustain", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 1.0f, Attr().withStringFromValueFunction (pct)));
     l.add (std::make_unique<P> (ParameterID { ids::release, v }, "Release", secs (0.003f, 8.0f, 0.5f), 0.08f, Attr().withStringFromValueFunction (secsText)));
-
-    l.add (std::make_unique<PC> (ParameterID { ids::filterType, v }, "Filter Type", StringArray { "OFF", "LOW-PASS", "HIGH-PASS" }, 0));
-    l.add (std::make_unique<P> (ParameterID { ids::cutoff, v }, "Filter Cutoff", secs (20.0f, 20000.0f, 1500.0f), 8000.0f,
-                                Attr().withStringFromValueFunction ([] (float x, int) { return x >= 1000.0f ? String (x / 1000.0f, 2) + " kHz" : String (roundToInt (x)) + " Hz"; })));
-    l.add (std::make_unique<P> (ParameterID { ids::resonance, v }, "Filter Resonance", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.2f, Attr().withStringFromValueFunction (pct)));
-    l.add (std::make_unique<P> (ParameterID { ids::drive, v }, "Drive", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, Attr().withStringFromValueFunction (pct)));
-    l.add (std::make_unique<P> (ParameterID { ids::width, v }, "Stereo Width", NormalisableRange<float> (0.0f, 2.0f, 0.001f), 1.0f, Attr().withStringFromValueFunction ([] (float x, int) { return String (roundToInt (x * 100.0f)) + " %"; })));
-    l.add (std::make_unique<P> (ParameterID { ids::motion, v }, "Motion Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, Attr().withStringFromValueFunction (pct)));
-    l.add (std::make_unique<P> (ParameterID { ids::motionRate, v }, "Motion Rate", secs (0.05f, 20.0f, 2.0f), 2.0f, Attr().withStringFromValueFunction ([] (float x, int) { return String (x, 2) + " Hz"; })));
-    l.add (std::make_unique<PC> (ParameterID { ids::motionDest, v }, "Motion Target", StringArray { "FILTER", "PITCH", "AMP", "PAN" }, 0));
-    l.add (std::make_unique<P> (ParameterID { ids::random, v }, "Random Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, Attr().withStringFromValueFunction (pct)));
-    l.add (std::make_unique<PI> (ParameterID { ids::randomSeed, v }, "Random Seed", 0, 999, 1));
-    l.add (std::make_unique<P> (ParameterID { ids::reverbMix, v }, "Reverb Mix", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, Attr().withStringFromValueFunction (pct)));
-    l.add (std::make_unique<P> (ParameterID { ids::reverbSize, v }, "Reverb Size", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f, Attr().withStringFromValueFunction (pct)));
-    l.add (std::make_unique<P> (ParameterID { ids::tail, v }, "Tail", secs (0.0f, 2000.0f, 150.0f), 0.0f,
-                                Attr().withStringFromValueFunction ([] (float x, int) { return String (roundToInt (x)) + " ms"; })));
+    l.add (tension (ids::tensionA, "Attack Tension"));
+    l.add (tension (ids::tensionD, "Decay Tension"));
+    l.add (tension (ids::tensionR, "Release Tension"));
     return l;
 }
 } // namespace prysm
